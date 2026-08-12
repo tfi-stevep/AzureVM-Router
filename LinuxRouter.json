@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.20.4.51522",
-      "templateHash": "14501291190077084403"
+      "version": "0.44.1.10279",
+      "templateHash": "13849593809052711307"
     }
   },
   "parameters": {
@@ -36,10 +36,10 @@
     },
     "osVersion": {
       "type": "string",
-      "defaultValue": "18.04",
+      "defaultValue": "24.04",
       "allowedValues": [
-        "18.04",
-        "22.04"
+        "22.04",
+        "24.04"
       ],
       "metadata": {
         "description": "Ubuntu OS Version"
@@ -104,16 +104,16 @@
     "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
     "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('existingSubnet'))]",
     "osVersionDefinitions": {
-      "18.04": {
-        "publisher": "Canonical",
-        "offer": "UbuntuServer",
-        "sku": "18.04-LTS",
-        "version": "latest"
-      },
       "22.04": {
         "publisher": "Canonical",
         "offer": "0001-com-ubuntu-server-jammy",
-        "sku": "22_04-lts",
+        "sku": "22_04-lts-gen2",
+        "version": "latest"
+      },
+      "24.04": {
+        "publisher": "Canonical",
+        "offer": "ubuntu-24_04-lts",
+        "sku": "server",
         "version": "latest"
       }
     }

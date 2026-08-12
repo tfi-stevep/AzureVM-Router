@@ -12,6 +12,10 @@ param virtualMachineName string
 ])
 param osDiskType string = 'Standard_LRS'
 
+@description('Ubuntu OS Version')
+@allowed(['22.04', '24.04'])
+param osVersion string = '24.04'
+
 @description('Admin username')
 param adminUsername string
 
@@ -43,6 +47,21 @@ param deployPublicIpAdress bool = true
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-nic'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
+
+var osVersionDefinitions = {
+  '22.04': {
+    publisher: 'Canonical'
+    offer: '0001-com-ubuntu-server-jammy'
+    sku: '22_04-lts-gen2'
+    version: 'latest'
+  }
+  '24.04': {
+    publisher: 'Canonical'
+    offer: 'ubuntu-24_04-lts'
+    sku: 'server'
+    version: 'latest'
+  }
+}
 
 resource default_nsg 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
   name: 'default-nsg'
@@ -98,12 +117,7 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2017-03-30' = {
       vmSize: virtualMachineSize
     }
     storageProfile: {
-      imageReference: {
-        publisher: 'Canonical'
-        offer: 'UbuntuServer'
-        sku: '18.04-LTS'
-        version: 'latest'
-      }
+      imageReference: osVersionDefinitions[osVersion]
       osDisk: {
         createOption: 'FromImage'
         managedDisk: {

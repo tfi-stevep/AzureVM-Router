@@ -13,8 +13,8 @@ param virtualMachineName string
 param osDiskType string = 'Standard_LRS'
 
 @description('Ubuntu OS Version')
-@allowed(['18.04', '22.04'])
-param osVersion string = '18.04'
+@allowed(['22.04', '24.04'])
+param osVersion string = '24.04'
 
 @description('Admin username')
 param adminUsername string
@@ -47,17 +47,17 @@ var nicName = '${virtualMachineName}-NIC'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
 var subnetResourceId = resourceId('Microsoft.Network/virtualNetworks/subnets', existingVirtualNetworkName, existingSubnet)
 
-var osVersionDefinitions = {  
-  '18.04': {
-    publisher: 'Canonical'
-    offer: 'UbuntuServer'
-    sku: '18.04-LTS'
-    version: 'latest'
-  }
+var osVersionDefinitions = {
   '22.04': {
     publisher: 'Canonical'
     offer: '0001-com-ubuntu-server-jammy'
-    sku: '22_04-lts'
+    sku: '22_04-lts-gen2'
+    version: 'latest'
+  }
+  '24.04': {
+    publisher: 'Canonical'
+    offer: 'ubuntu-24_04-lts'
+    sku: 'server'
     version: 'latest'
   }
 }

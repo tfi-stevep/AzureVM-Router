@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "14442242535039046463"
+      "templateHash": "17915316304562142475"
     }
   },
   "parameters": {
@@ -32,6 +32,17 @@
       ],
       "metadata": {
         "description": "Select Disk Type: Premium SSD (Premium_LRS), Standard SSD (StandardSSD_LRS), Standard HDD (Standard_LRS)"
+      }
+    },
+    "osVersion": {
+      "type": "string",
+      "defaultValue": "24.04",
+      "allowedValues": [
+        "22.04",
+        "24.04"
+      ],
+      "metadata": {
+        "description": "Ubuntu OS Version"
       }
     },
     "adminUsername": {
@@ -97,7 +108,21 @@
   "variables": {
     "extensionName": "CustomScript",
     "nicName": "[format('{0}-nic', parameters('virtualMachineName'))]",
-    "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]"
+    "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
+    "osVersionDefinitions": {
+      "22.04": {
+        "publisher": "Canonical",
+        "offer": "0001-com-ubuntu-server-jammy",
+        "sku": "22_04-lts-gen2",
+        "version": "latest"
+      },
+      "24.04": {
+        "publisher": "Canonical",
+        "offer": "ubuntu-24_04-lts",
+        "sku": "server",
+        "version": "latest"
+      }
+    }
   },
   "resources": [
     {
@@ -156,12 +181,7 @@
           "vmSize": "[parameters('virtualMachineSize')]"
         },
         "storageProfile": {
-          "imageReference": {
-            "publisher": "Canonical",
-            "offer": "UbuntuServer",
-            "sku": "18.04-LTS",
-            "version": "latest"
-          },
+          "imageReference": "[variables('osVersionDefinitions')[parameters('osVersion')]]",
           "osDisk": {
             "createOption": "FromImage",
             "managedDisk": {

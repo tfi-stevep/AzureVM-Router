@@ -4,7 +4,7 @@ Deploy Azure VM (Linux or Windows) with IP forwarder enabled to be used as Route
 
 ## Deploy Linux VM as Router (IPv4 and IPv6) + NAT to Internet
 
-This template deploys a Linux Router (Ubuntu 18.04-LTS) to an existing Virtual Network (VNET)/Subnet using a Single NIC + IP Forwarding Enabled.
+This template deploys a Linux Router (Ubuntu 24.04 LTS by default, 22.04 LTS selectable via the `osVersion` parameter) to an existing Virtual Network (VNET)/Subnet using a Single NIC + IP Forwarding Enabled. The ARM templates (`LinuxRouter.json`, `LinuxRouter-newsubnet.json`) are generated from the Bicep sources (`LinuxRouter.bicep`, `LinuxRouter-newsubnet.bicep`).
 
 [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2FLinuxRouter.json)
 [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2FLinuxRouter.json)
