@@ -1,6 +1,13 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.20.4.51522",
+      "templateHash": "4079781649281810920"
+    }
+  },
   "parameters": {
     "virtualMachineSize": {
       "type": "string",
@@ -12,7 +19,7 @@
     "virtualMachineName": {
       "type": "string",
       "metadata": {
-        "description": "Linux Router Manchine Name"
+        "description": "Linux Router Machine Name"
       }
     },
     "osDiskType": {
@@ -57,32 +64,47 @@
       "metadata": {
         "description": "Specify Subnet Prefix. It can be small as /29"
       }
-  
     },
     "scriptUri": {
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'LinuxRouter.sh')]",
       "type": "string",
-      "metadata": { "description": "Script that will be executed" }
+      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'LinuxRouter.sh')]",
+      "metadata": {
+        "description": "Script that will be executed"
+      }
     },
     "scriptCmd": {
-      "defaultValue": "sh linuxrouter.sh",
       "type": "string",
-      "metadata": { "description": "Command to run the script" }
+      "defaultValue": "sh linuxrouter.sh",
+      "metadata": {
+        "description": "Command to run the script"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "deployPublicIpAdress": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Public IP Address"
+      }
     }
   },
   "variables": {
     "extensionName": "CustomScript",
-    "NIC": "[concat(parameters('virtualMachineName'),'-NIC')]",
-    "publicIPAddressName": "[concat(parameters('virtualMachineName'),'-PublicIP')]",
-    "subnet1Ref": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]",
-    "location": "[resourceGroup().location]"
+    "nicName": "[format('{0}-nic', parameters('virtualMachineName'))]",
+    "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]"
   },
   "resources": [
     {
-      "apiVersion": "2020-05-01",
       "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2020-05-01",
       "name": "default-nsg",
-      "location": "[variables('location')]",
+      "location": "[parameters('location')]",
       "properties": {
         "securityRules": [
           {
@@ -102,29 +124,24 @@
       }
     },
     {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
       "apiVersion": "2020-05-01",
-      "type": "Microsoft.Network/virtualNetworks/Subnets",
-      "name": "[concat(parameters('subnetName'),'-vnet')]",
-      "location": "[variables('location')]",
-      "dependsOn": [
-        "[variables('NIC')]"
-      ],
+      "name": "[format('{0}/{1}', parameters('existingVirtualNetworkName'), format('{0}-vnet', parameters('subnetName')))]",
       "properties": {
         "addressPrefix": "[parameters('subnetPrefix')]",
         "networkSecurityGroup": {
           "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'default-nsg')]"
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', 'default-nsg')]"
+      ]
     },
     {
-      "name": "[parameters('virtualMachineName')]",
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2017-03-30",
-      "location": "[variables('location')]",
-      "comments": "This is the virtual machine that you're building.",
-      "dependsOn": [
-        "[variables('NIC')]"
-      ],
+      "name": "[parameters('virtualMachineName')]",
+      "location": "[parameters('location')]",
       "properties": {
         "osProfile": {
           "computerName": "[parameters('virtualMachineName')]",
@@ -155,21 +172,20 @@
               "properties": {
                 "primary": true
               },
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC'))]"
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
             }
           ]
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+      ]
     },
     {
-      "name": "[variables('NIC')]",
       "type": "Microsoft.Network/networkInterfaces",
       "apiVersion": "2017-06-01",
-      "location": "[variables('location')]",
-      "comments": "This will be your Primary NIC Untrusted",
-      "dependsOn": [
-        "[variables('publicIpAddressName')]"
-      ],
+      "name": "[variables('nicName')]",
+      "location": "[parameters('location')]",
       "properties": {
         "enableIPForwarding": true,
         "ipConfigurations": [
@@ -177,35 +193,34 @@
             "name": "ipconfig1",
             "properties": {
               "subnet": {
-                "id": "[variables('subnet1Ref')]"
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), format('{0}-vnet', parameters('subnetName')))]"
               },
               "privateIPAllocationMethod": "Dynamic",
-              "publicIpAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]"
-              }
+              "publicIPAddress": "[if(parameters('deployPublicIpAdress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), createObject())]"
             }
           }
         ]
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), format('{0}-vnet', parameters('subnetName')))]"
+      ]
     },
     {
-      "name": "[variables('publicIpAddressName')]",
+      "condition": "[parameters('deployPublicIpAdress')]",
       "type": "Microsoft.Network/publicIPAddresses",
       "apiVersion": "2017-06-01",
-      "location": "[variables('location')]",
-      "comments": "Public IP for your Primary NIC",
+      "name": "[variables('publicIPAddressName')]",
+      "location": "[parameters('location')]",
       "properties": {
         "publicIPAllocationMethod": "Dynamic"
       }
     },
     {
       "type": "Microsoft.Compute/virtualMachines/extensions",
-      "name": "[concat(parameters('virtualMachineName'), '/', variables('extensionName'))]",
       "apiVersion": "2015-06-15",
-      "location": "[variables('location')]",
-      "dependsOn": [
-        "[concat('Microsoft.Compute/virtualMachines/', parameters('virtualMachineName'))]"
-      ],
+      "name": "[format('{0}/{1}', parameters('virtualMachineName'), variables('extensionName'))]",
+      "location": "[parameters('location')]",
       "properties": {
         "publisher": "Microsoft.Azure.Extensions",
         "type": "CustomScript",
@@ -217,8 +232,10 @@
           ],
           "commandToExecute": "[parameters('scriptCmd')]"
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('virtualMachineName'))]"
+      ]
     }
-  ],
-  "outputs": {}
+  ]
 }

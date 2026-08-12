@@ -9,12 +9,17 @@ sed -i "/net.ipv6.conf.all.forwarding=1/ s/# *//" /etc/sysctl.conf
 sed -i "/net.ipv4.conf.all.accept_redirects = 0/ s/# *//" /etc/sysctl.conf
 sed -i "/net.ipv6.conf.all.accept_redirects = 0/ s/# *//" /etc/sysctl.conf
 
+# On Ubuntu 20.04 and later, iptables uses the nftables backend (iptables-nft),
+# so the same commands work unchanged on 18.04, 20.04, 22.04 and 24.04.
+export DEBIAN_FRONTEND=noninteractive
+
 echo "Updating repositories"
 sudo apt-get update -y --fix-missing
-echo "Installing IPTables-Persistent"
+
+echo "Installing Netfilter-Persistent & IPTables-Persistent"
 echo iptables-persistent iptables-persistent/autosave_v4 boolean false | sudo debconf-set-selections
 echo iptables-persistent iptables-persistent/autosave_v6 boolean false | sudo debconf-set-selections
-sudo apt-get -y install iptables-persistent
+sudo apt-get -y install netfilter-persistent iptables-persistent
 
 # Enable NAT to Internet
 iptables -t nat -A POSTROUTING -d 10.0.0.0/8 -j ACCEPT

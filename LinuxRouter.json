@@ -1,6 +1,13 @@
 {
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
+  "metadata": {
+    "_generator": {
+      "name": "bicep",
+      "version": "0.20.4.51522",
+      "templateHash": "14501291190077084403"
+    }
+  },
   "parameters": {
     "virtualMachineSize": {
       "type": "string",
@@ -12,7 +19,7 @@
     "virtualMachineName": {
       "type": "string",
       "metadata": {
-        "description": "Linux Router Manchine Name"
+        "description": "Linux Router Machine Name"
       }
     },
     "osDiskType": {
@@ -25,6 +32,17 @@
       ],
       "metadata": {
         "description": "Select Disk Type: Premium SSD (Premium_LRS), Standard SSD (StandardSSD_LRS), Standard HDD (Standard_LRS)"
+      }
+    },
+    "osVersion": {
+      "type": "string",
+      "defaultValue": "18.04",
+      "allowedValues": [
+        "18.04",
+        "22.04"
+      ],
+      "metadata": {
+        "description": "Ubuntu OS Version"
       }
     },
     "adminUsername": {
@@ -52,36 +70,60 @@
       }
     },
     "scriptUri": {
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')]",
       "type": "string",
-      "metadata": { "description": "Script that will be executed" }
+      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')]",
+      "metadata": {
+        "description": "Script that will be executed"
+      }
     },
     "scriptCmd": {
-      "defaultValue": "sh linuxrouter.sh",
       "type": "string",
-      "metadata": { "description": "Command to run the script" }
+      "defaultValue": "sh linuxrouter.sh",
+      "metadata": {
+        "description": "Command to run the script"
+      }
     },
     "location": {
+      "type": "string",
       "defaultValue": "[resourceGroup().location]",
-      "type": "string"
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
+    },
+    "deployPublicIpAdress": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Public IP Address"
+      }
     }
   },
   "variables": {
     "extensionName": "CustomScript",
-    "NIC": "[concat(parameters('virtualMachineName'),'-NIC')]",
-    "publicIPAddressName": "[concat(parameters('virtualMachineName'),'-PublicIP')]",
-    "subnet1Ref": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('existingSubnet'))]"
+    "nicName": "[format('{0}-NIC', parameters('virtualMachineName'))]",
+    "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
+    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('existingSubnet'))]",
+    "osVersionDefinitions": {
+      "18.04": {
+        "publisher": "Canonical",
+        "offer": "UbuntuServer",
+        "sku": "18.04-LTS",
+        "version": "latest"
+      },
+      "22.04": {
+        "publisher": "Canonical",
+        "offer": "0001-com-ubuntu-server-jammy",
+        "sku": "22_04-lts",
+        "version": "latest"
+      }
+    }
   },
   "resources": [
     {
-      "name": "[parameters('virtualMachineName')]",
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2017-03-30",
+      "name": "[parameters('virtualMachineName')]",
       "location": "[parameters('location')]",
-      "comments": "This is the virtual machine that you're building.",
-      "dependsOn": [
-        "[variables('NIC')]"
-      ],
       "properties": {
         "osProfile": {
           "computerName": "[parameters('virtualMachineName')]",
@@ -92,14 +134,10 @@
           "vmSize": "[parameters('virtualMachineSize')]"
         },
         "storageProfile": {
-          "imageReference": {
-            "publisher": "Canonical",
-            "offer": "UbuntuServer",
-            "sku": "18.04-LTS",
-            "version": "latest"
-          },
+          "imageReference": "[variables('osVersionDefinitions')[parameters('osVersion')]]",
           "osDisk": {
             "createOption": "FromImage",
+            "name": "[format('{0}-OSDisk', parameters('virtualMachineName'))]",
             "managedDisk": {
               "storageAccountType": "[parameters('osDiskType')]"
             }
@@ -112,21 +150,20 @@
               "properties": {
                 "primary": true
               },
-              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('NIC'))]"
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
             }
           ]
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+      ]
     },
     {
-      "name": "[variables('NIC')]",
       "type": "Microsoft.Network/networkInterfaces",
       "apiVersion": "2017-06-01",
+      "name": "[variables('nicName')]",
       "location": "[parameters('location')]",
-      "comments": "This will be your Primary NIC Untrusted",
-      "dependsOn": [
-        "[variables('publicIpAddressName')]"
-      ],
       "properties": {
         "enableIPForwarding": true,
         "ipConfigurations": [
@@ -134,35 +171,35 @@
             "name": "ipconfig1",
             "properties": {
               "subnet": {
-                "id": "[variables('subnet1Ref')]"
+                "id": "[variables('subnetResourceId')]"
               },
               "privateIPAllocationMethod": "Dynamic",
-              "publicIpAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIpAddresses', variables('publicIpAddressName'))]"
+              "publicIPAddress": {
+                "id": "[if(parameters('deployPublicIpAdress'), resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName')), null())]"
               }
             }
           }
         ]
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+      ]
     },
     {
-      "name": "[variables('publicIpAddressName')]",
+      "condition": "[parameters('deployPublicIpAdress')]",
       "type": "Microsoft.Network/publicIPAddresses",
       "apiVersion": "2017-06-01",
+      "name": "[variables('publicIPAddressName')]",
       "location": "[parameters('location')]",
-      "comments": "Public IP for your Primary NIC",
       "properties": {
         "publicIPAllocationMethod": "Dynamic"
       }
     },
     {
       "type": "Microsoft.Compute/virtualMachines/extensions",
-      "name": "[concat(parameters('virtualMachineName'), '/', variables('extensionName'))]",
       "apiVersion": "2015-06-15",
+      "name": "[format('{0}/{1}', parameters('virtualMachineName'), variables('extensionName'))]",
       "location": "[parameters('location')]",
-      "dependsOn": [
-        "[concat('Microsoft.Compute/virtualMachines/', parameters('virtualMachineName'))]"
-      ],
       "properties": {
         "publisher": "Microsoft.Azure.Extensions",
         "type": "CustomScript",
@@ -174,8 +211,10 @@
           ],
           "commandToExecute": "[parameters('scriptCmd')]"
         }
-      }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', parameters('virtualMachineName'))]"
+      ]
     }
-  ],
-  "outputs": {}
+  ]
 }
