@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "17915316304562142475"
+      "templateHash": "8144930940964935018"
     }
   },
   "parameters": {
@@ -127,7 +127,7 @@
   "resources": [
     {
       "type": "Microsoft.Network/networkSecurityGroups",
-      "apiVersion": "2020-05-01",
+      "apiVersion": "2024-05-01",
       "name": "default-nsg",
       "location": "[parameters('location')]",
       "properties": {
@@ -154,7 +154,7 @@
     },
     {
       "type": "Microsoft.Network/virtualNetworks/subnets",
-      "apiVersion": "2020-05-01",
+      "apiVersion": "2024-05-01",
       "name": "[format('{0}/{1}', parameters('existingVirtualNetworkName'), parameters('subnetName'))]",
       "properties": {
         "addressPrefix": "[parameters('subnetPrefix')]",
@@ -168,7 +168,7 @@
     },
     {
       "type": "Microsoft.Compute/virtualMachines",
-      "apiVersion": "2017-03-30",
+      "apiVersion": "2024-07-01",
       "name": "[parameters('virtualMachineName')]",
       "location": "[parameters('location')]",
       "properties": {
@@ -184,6 +184,7 @@
           "imageReference": "[variables('osVersionDefinitions')[parameters('osVersion')]]",
           "osDisk": {
             "createOption": "FromImage",
+            "name": "[format('{0}-OSDisk', parameters('virtualMachineName'))]",
             "managedDisk": {
               "storageAccountType": "[parameters('osDiskType')]"
             }
@@ -207,7 +208,7 @@
     },
     {
       "type": "Microsoft.Network/networkInterfaces",
-      "apiVersion": "2017-06-01",
+      "apiVersion": "2024-05-01",
       "name": "[variables('nicName')]",
       "location": "[parameters('location')]",
       "properties": {
@@ -220,7 +221,7 @@
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]"
               },
               "privateIPAllocationMethod": "Dynamic",
-              "publicIPAddress": "[if(parameters('deployPublicIpAdress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), createObject())]"
+              "publicIPAddress": "[if(parameters('deployPublicIpAdress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
             }
           }
         ]
@@ -233,16 +234,19 @@
     {
       "condition": "[parameters('deployPublicIpAdress')]",
       "type": "Microsoft.Network/publicIPAddresses",
-      "apiVersion": "2017-06-01",
+      "apiVersion": "2024-05-01",
       "name": "[variables('publicIPAddressName')]",
       "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
       "properties": {
-        "publicIPAllocationMethod": "Dynamic"
+        "publicIPAllocationMethod": "Static"
       }
     },
     {
       "type": "Microsoft.Compute/virtualMachines/extensions",
-      "apiVersion": "2015-06-15",
+      "apiVersion": "2024-07-01",
       "name": "[format('{0}/{1}', parameters('virtualMachineName'), variables('extensionName'))]",
       "location": "[parameters('location')]",
       "properties": {

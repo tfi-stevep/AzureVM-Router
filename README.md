@@ -20,4 +20,3 @@ This template deploys a Windows (Server 2019 Core - Small Disk) Router to an exi
 
 - Add VMSS option for both Linux and Windows deployments
 - Add Accelerated Networking option
-- Make Public IP optional, enable or disable it (Currently deploys with Public IP assigned)

@@ -41,7 +41,6 @@ param location string = resourceGroup().location
 @description('Deploy Public IP Address')
 param deployPublicIpAdress bool = true
 
-
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-NIC'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
@@ -62,7 +61,7 @@ var osVersionDefinitions = {
   }
 }
 
-resource virtualMachine 'Microsoft.Compute/virtualMachines@2017-03-30' = {
+resource virtualMachine 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   name: virtualMachineName
   location: location
   properties: {
@@ -98,7 +97,7 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2017-03-30' = {
   }
 }
 
-resource nic 'Microsoft.Network/networkInterfaces@2017-06-01' = {
+resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: nicName
   location: location
   properties: {
@@ -111,24 +110,27 @@ resource nic 'Microsoft.Network/networkInterfaces@2017-06-01' = {
             id: subnetResourceId
           }
           privateIPAllocationMethod: 'Dynamic'
-          publicIPAddress: {
-            id: deployPublicIpAdress ? publicIpAddress.id : null
-          }
+          publicIPAddress: deployPublicIpAdress ? {
+            id: publicIpAddress.id
+          } : null
         }
       }
     ]
   }
 }
 
-resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2017-06-01' = if (deployPublicIpAdress) {
+resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployPublicIpAdress) {
   name: publicIPAddressName
   location: location
+  sku: {
+    name: 'Standard'
+  }
   properties: {
-    publicIPAllocationMethod: 'Dynamic'
+    publicIPAllocationMethod: 'Static'
   }
 }
 
-resource virtualMachineName_extension 'Microsoft.Compute/virtualMachines/extensions@2015-06-15' = {
+resource virtualMachineName_extension 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
   parent: virtualMachine
   name: extensionName
   location: location

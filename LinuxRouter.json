@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "13849593809052711307"
+      "templateHash": "15621897026641729361"
     }
   },
   "parameters": {
@@ -121,7 +121,7 @@
   "resources": [
     {
       "type": "Microsoft.Compute/virtualMachines",
-      "apiVersion": "2017-03-30",
+      "apiVersion": "2024-07-01",
       "name": "[parameters('virtualMachineName')]",
       "location": "[parameters('location')]",
       "properties": {
@@ -161,7 +161,7 @@
     },
     {
       "type": "Microsoft.Network/networkInterfaces",
-      "apiVersion": "2017-06-01",
+      "apiVersion": "2024-05-01",
       "name": "[variables('nicName')]",
       "location": "[parameters('location')]",
       "properties": {
@@ -174,9 +174,7 @@
                 "id": "[variables('subnetResourceId')]"
               },
               "privateIPAllocationMethod": "Dynamic",
-              "publicIPAddress": {
-                "id": "[if(parameters('deployPublicIpAdress'), resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName')), null())]"
-              }
+              "publicIPAddress": "[if(parameters('deployPublicIpAdress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
             }
           }
         ]
@@ -188,16 +186,19 @@
     {
       "condition": "[parameters('deployPublicIpAdress')]",
       "type": "Microsoft.Network/publicIPAddresses",
-      "apiVersion": "2017-06-01",
+      "apiVersion": "2024-05-01",
       "name": "[variables('publicIPAddressName')]",
       "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
       "properties": {
-        "publicIPAllocationMethod": "Dynamic"
+        "publicIPAllocationMethod": "Static"
       }
     },
     {
       "type": "Microsoft.Compute/virtualMachines/extensions",
-      "apiVersion": "2015-06-15",
+      "apiVersion": "2024-07-01",
       "name": "[format('{0}/{1}', parameters('virtualMachineName'), variables('extensionName'))]",
       "location": "[parameters('location')]",
       "properties": {

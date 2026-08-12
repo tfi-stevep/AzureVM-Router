@@ -63,7 +63,7 @@ var osVersionDefinitions = {
   }
 }
 
-resource default_nsg 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
+resource default_nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'default-nsg'
   location: location
   properties: {
@@ -89,11 +89,11 @@ resource default_nsg 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
   }
 }
 
-resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' existing = {
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' existing = {
   name: existingVirtualNetworkName
 }
 
-resource subnet 'Microsoft.Network/virtualNetworks/subnets@2020-05-01' = {
+resource subnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = {
   name: subnetName
   parent: virtualNetwork
   properties: {
@@ -104,7 +104,7 @@ resource subnet 'Microsoft.Network/virtualNetworks/subnets@2020-05-01' = {
   }
 }
 
-resource virtualMachine 'Microsoft.Compute/virtualMachines@2017-03-30' = {
+resource virtualMachine 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   name: virtualMachineName
   location: location
   properties: {
@@ -120,6 +120,7 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2017-03-30' = {
       imageReference: osVersionDefinitions[osVersion]
       osDisk: {
         createOption: 'FromImage'
+        name: '${virtualMachineName}-OSDisk'
         managedDisk: {
           storageAccountType: osDiskType
         }
@@ -139,7 +140,7 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2017-03-30' = {
   }
 }
 
-resource nic 'Microsoft.Network/networkInterfaces@2017-06-01' = {
+resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: nicName
   location: location
   properties: {
@@ -154,22 +155,25 @@ resource nic 'Microsoft.Network/networkInterfaces@2017-06-01' = {
           privateIPAllocationMethod: 'Dynamic'
           publicIPAddress: deployPublicIpAdress ? {
             id: publicIpAddress.id
-          } : {}
+          } : null
         }
       }
     ]
   }
 }
 
-resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2017-06-01' = if (deployPublicIpAdress) {
+resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployPublicIpAdress) {
   name: publicIPAddressName
   location: location
+  sku: {
+    name: 'Standard'
+  }
   properties: {
-    publicIPAllocationMethod: 'Dynamic'
+    publicIPAllocationMethod: 'Static'
   }
 }
 
-resource virtualMachineExtension 'Microsoft.Compute/virtualMachines/extensions@2015-06-15' = {
+resource virtualMachineExtension 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
   name: extensionName
   parent: virtualMachine
   location: location
