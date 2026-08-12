@@ -23,7 +23,7 @@ param adminUsername string
 @secure()
 param adminPassword string
 
-@description('Existing Virtual Nework Name')
+@description('Existing Virtual Network Name')
 param existingVirtualNetworkName string
 
 @description('Type Existing Subnet Name')
@@ -39,7 +39,7 @@ param scriptCmd string = 'sh linuxrouter.sh'
 param location string = resourceGroup().location
 
 @description('Deploy Public IP Address')
-param deployPublicIpAdress bool = true
+param deployPublicIpAddress bool = true
 
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-NIC'
@@ -110,7 +110,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
             id: subnetResourceId
           }
           privateIPAllocationMethod: 'Dynamic'
-          publicIPAddress: deployPublicIpAdress ? {
+          publicIPAddress: deployPublicIpAddress ? {
             id: publicIpAddress.id
           } : null
         }
@@ -119,7 +119,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   }
 }
 
-resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployPublicIpAdress) {
+resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployPublicIpAddress) {
   name: publicIPAddressName
   location: location
   sku: {

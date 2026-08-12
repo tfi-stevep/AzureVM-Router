@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.44.1.10279",
-      "templateHash": "8144930940964935018"
+      "templateHash": "8094453408631886471"
     }
   },
   "parameters": {
@@ -60,7 +60,7 @@
     "existingVirtualNetworkName": {
       "type": "string",
       "metadata": {
-        "description": "Existing Virtual Nework Name"
+        "description": "Existing Virtual Network Name"
       }
     },
     "subnetName": {
@@ -97,7 +97,7 @@
         "description": "Azure region for all resources."
       }
     },
-    "deployPublicIpAdress": {
+    "deployPublicIpAddress": {
       "type": "bool",
       "defaultValue": true,
       "metadata": {
@@ -107,7 +107,7 @@
   },
   "variables": {
     "extensionName": "CustomScript",
-    "nicName": "[format('{0}-nic', parameters('virtualMachineName'))]",
+    "nicName": "[format('{0}-NIC', parameters('virtualMachineName'))]",
     "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
     "osVersionDefinitions": {
       "22.04": {
@@ -221,7 +221,7 @@
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]"
               },
               "privateIPAllocationMethod": "Dynamic",
-              "publicIPAddress": "[if(parameters('deployPublicIpAdress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
+              "publicIPAddress": "[if(parameters('deployPublicIpAddress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
             }
           }
         ]
@@ -232,7 +232,7 @@
       ]
     },
     {
-      "condition": "[parameters('deployPublicIpAdress')]",
+      "condition": "[parameters('deployPublicIpAddress')]",
       "type": "Microsoft.Network/publicIPAddresses",
       "apiVersion": "2024-05-01",
       "name": "[variables('publicIPAddressName')]",
