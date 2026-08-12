@@ -17,7 +17,7 @@ az network vnet subnet create --address-prefix 10.1.0.0/24 --name nvasubnet --re
 # NVA + Config script to enable NAT
 az network public-ip create --name $nvaname-pip --resource-group $rg --location $location --allocation-method Dynamic
 az network nic create --name $nvaname-nic --resource-group $rg --subnet $subnetname --vnet $vnetname --public-ip-address $nvaname-pip --ip-forwarding true -o none
-az vm create --resource-group $rg --location $location --name $nvaname --size Standard_B1s --nics $nvaname-nic  --image Ubuntu2204 --admin-username $username --admin-password $password -o none
+az vm create --resource-group $rg --location $location --name $nvaname --size Standard_B1s --nics $nvaname-nic  --image Ubuntu2404 --admin-username $username --admin-password $password -o none
 # Enable routing and NAT on Linux NVA:
 scripturi="https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/linuxrouter.sh"
 az vm extension set --resource-group $rg --vm-name $nvaname  --name customScript --publisher Microsoft.Azure.Extensions \
