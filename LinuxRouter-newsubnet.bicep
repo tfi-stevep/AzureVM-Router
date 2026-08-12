@@ -29,7 +29,7 @@ param subnetName string = 'lxnva-subnet'
 param subnetPrefix string
 
 @description('Script that will be executed')
-param scriptUri string = uri(deployment().properties.templateLink.uri, 'LinuxRouter.sh')
+param scriptUri string = uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')
 
 @description('Command to run the script')
 param scriptCmd string = 'sh linuxrouter.sh'
@@ -53,10 +53,14 @@ resource default_nsg 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
         name: 'Allow-Traffic-RFC-1918'
         properties: {
           priority: 300
-          protocol: 'TCP'
+          protocol: '*'
           access: 'Allow'
           direction: 'Inbound'
-          sourceAddressPrefix: '10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'
+          sourceAddressPrefixes: [
+            '10.0.0.0/8'
+            '172.16.0.0/12'
+            '192.168.0.0/16'
+          ]
           sourcePortRange: '*'
           destinationAddressPrefix: '*'
           destinationPortRange: '*'
@@ -71,7 +75,7 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2022-11-01' existing 
 }
 
 resource subnet 'Microsoft.Network/virtualNetworks/subnets@2020-05-01' = {
-  name: '${subnetName}-vnet'
+  name: subnetName
   parent: virtualNetwork
   properties: {
     addressPrefix: subnetPrefix

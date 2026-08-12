@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.20.4.51522",
-      "templateHash": "4079781649281810920"
+      "version": "0.44.1.10279",
+      "templateHash": "14442242535039046463"
     }
   },
   "parameters": {
@@ -67,7 +67,7 @@
     },
     "scriptUri": {
       "type": "string",
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'LinuxRouter.sh')]",
+      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')]",
       "metadata": {
         "description": "Script that will be executed"
       }
@@ -111,10 +111,14 @@
             "name": "Allow-Traffic-RFC-1918",
             "properties": {
               "priority": 300,
-              "protocol": "TCP",
+              "protocol": "*",
               "access": "Allow",
               "direction": "Inbound",
-              "sourceAddressPrefix": "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
+              "sourceAddressPrefixes": [
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "192.168.0.0/16"
+              ],
               "sourcePortRange": "*",
               "destinationAddressPrefix": "*",
               "destinationPortRange": "*"
@@ -126,7 +130,7 @@
     {
       "type": "Microsoft.Network/virtualNetworks/subnets",
       "apiVersion": "2020-05-01",
-      "name": "[format('{0}/{1}', parameters('existingVirtualNetworkName'), format('{0}-vnet', parameters('subnetName')))]",
+      "name": "[format('{0}/{1}', parameters('existingVirtualNetworkName'), parameters('subnetName'))]",
       "properties": {
         "addressPrefix": "[parameters('subnetPrefix')]",
         "networkSecurityGroup": {
@@ -193,7 +197,7 @@
             "name": "ipconfig1",
             "properties": {
               "subnet": {
-                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), format('{0}-vnet', parameters('subnetName')))]"
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]"
               },
               "privateIPAllocationMethod": "Dynamic",
               "publicIPAddress": "[if(parameters('deployPublicIpAdress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), createObject())]"
@@ -203,7 +207,7 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]",
-        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), format('{0}-vnet', parameters('subnetName')))]"
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]"
       ]
     },
     {
