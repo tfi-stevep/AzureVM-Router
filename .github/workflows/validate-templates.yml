@@ -25,7 +25,11 @@ jobs:
           bicep --version
 
       - name: Lint Bicep sources
-        run: bicep lint infra/bicep/*.bicep
+        run: |
+          for src in infra/bicep/*.bicep; do
+            echo "Linting $src"
+            bicep lint "$src"
+          done
 
       # The ARM JSON under infra/arm/ is generated, never hand-edited. Rebuild it
       # and fail if the result differs from what is committed.
