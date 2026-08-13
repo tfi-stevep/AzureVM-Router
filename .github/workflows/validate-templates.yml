@@ -3,9 +3,9 @@ name: Validate templates
 on:
   push:
     branches: [master]
-    paths: ['infra/**', 'scripts/**', '.github/workflows/validate-templates.yml']
+    paths: ['infra/**', 'scripts/**', 'tools/**', '.github/workflows/validate-templates.yml']
   pull_request:
-    paths: ['infra/**', 'scripts/**', '.github/workflows/validate-templates.yml']
+    paths: ['infra/**', 'scripts/**', 'tools/**', '.github/workflows/validate-templates.yml']
   workflow_dispatch:
 
 permissions:
@@ -54,10 +54,11 @@ jobs:
       # shebang with "bad interpreter: No such file or directory".
       - name: Reject CRLF line endings
         run: |
-          if grep -rlU $'\r' scripts/linux labs; then
+          if grep -rlU $'\r' scripts/linux labs tools; then
             echo "::error::Files above contain CRLF line endings; they must be LF."
             exit 1
           fi
 
       - name: Check syntax
-        run: for f in scripts/linux/*.sh; do bash -n "$f"; done
+        run: |
+          for f in scripts/linux/*.sh tools/*.sh; do bash -n "$f"; done

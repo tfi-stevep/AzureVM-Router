@@ -5,33 +5,21 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "8395921165082925479"
+      "templateHash": "18243471132502850443"
     }
   },
   "parameters": {
-    "virtualMachineSize": {
-      "type": "string",
-      "defaultValue": "Standard_B2s",
-      "metadata": {
-        "description": "VM size"
-      }
-    },
     "virtualMachineName": {
       "type": "string",
       "metadata": {
         "description": "Windows Router Machine Name"
       }
     },
-    "osDiskType": {
+    "virtualMachineSize": {
       "type": "string",
-      "defaultValue": "Standard_LRS",
-      "allowedValues": [
-        "Standard_LRS",
-        "StandardSSD_LRS",
-        "Premium_LRS"
-      ],
+      "defaultValue": "Standard_B2s",
       "metadata": {
-        "description": "Select Disk Type: Premium SSD (Premium_LRS), Standard SSD (StandardSSD_LRS), Standard HDD (Standard_LRS)"
+        "description": "VM size"
       }
     },
     "osVersion": {
@@ -46,6 +34,18 @@
         "description": "Windows Server version. All options are Server Core, small disk, Generation 2 images."
       }
     },
+    "osDiskType": {
+      "type": "string",
+      "defaultValue": "Standard_LRS",
+      "allowedValues": [
+        "Standard_LRS",
+        "StandardSSD_LRS",
+        "Premium_LRS"
+      ],
+      "metadata": {
+        "description": "Select Disk Type: Premium SSD (Premium_LRS), Standard SSD (StandardSSD_LRS), Standard HDD (Standard_LRS)"
+      }
+    },
     "adminUsername": {
       "type": "string",
       "metadata": {
@@ -58,37 +58,42 @@
         "description": "Admin password"
       }
     },
-    "existingVirtualNetworkName": {
+    "networkMode": {
       "type": "string",
+      "defaultValue": "ExistingSubnet",
+      "allowedValues": [
+        "ExistingSubnet",
+        "NewSubnet",
+        "NewVnet"
+      ],
       "metadata": {
-        "description": "Existing Virtual Network Name"
+        "description": "How the router is attached to the network. ExistingSubnet: join a virtual network and subnet that already exist. NewSubnet: join an existing virtual network and create a new subnet in it. NewVnet: create a new virtual network and subnet."
       }
     },
-    "existingSubnet": {
+    "virtualNetworkName": {
       "type": "string",
       "metadata": {
-        "description": "Type Existing Subnet Name"
+        "description": "Virtual network name. Must already exist for ExistingSubnet and NewSubnet; created for NewVnet."
       }
     },
-    "scriptUri": {
+    "virtualNetworkAddressPrefix": {
       "type": "string",
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, '../../scripts/windows/winrouter.ps1')]",
+      "defaultValue": "10.100.0.0/16",
       "metadata": {
-        "description": "Script that will be executed"
+        "description": "Address space for the virtual network. Only used when networkMode is NewVnet."
       }
     },
-    "scriptCmd": {
+    "subnetName": {
       "type": "string",
-      "defaultValue": "powershell.exe -ExecutionPolicy Unrestricted -File winrouter.ps1",
       "metadata": {
-        "description": "Command to run the script"
+        "description": "Subnet name. Must already exist for ExistingSubnet; created for NewSubnet and NewVnet."
       }
     },
-    "location": {
+    "subnetAddressPrefix": {
       "type": "string",
-      "defaultValue": "[resourceGroup().location]",
+      "defaultValue": "10.100.0.0/24",
       "metadata": {
-        "description": "Azure region for all resources."
+        "description": "CIDR for the subnet to create, can be as small as /29. Only used when networkMode is NewSubnet or NewVnet."
       }
     },
     "deployPublicIpAddress": {
@@ -104,6 +109,27 @@
       "metadata": {
         "description": "Source address prefix allowed to reach the VM on TCP 3389, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need RDP from the internet. Use Internet to allow any source (not recommended)."
       }
+    },
+    "scriptUri": {
+      "type": "string",
+      "defaultValue": "[uri(coalesce(tryGet(tryGet(deployment().properties, 'templateLink'), 'uri'), 'https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/infra/arm/windows-router.json'), '../../scripts/windows/winrouter.ps1')]",
+      "metadata": {
+        "description": "Script that will be executed. Defaults to the script alongside this template when deployed from a URL, and to the master branch on GitHub when deployed from a local file or a template spec."
+      }
+    },
+    "scriptCmd": {
+      "type": "string",
+      "defaultValue": "powershell.exe -ExecutionPolicy Unrestricted -File winrouter.ps1",
+      "metadata": {
+        "description": "Command to run the script"
+      }
+    },
+    "location": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().location]",
+      "metadata": {
+        "description": "Azure region for all resources."
+      }
     }
   },
   "variables": {
@@ -111,8 +137,13 @@
     "nicName": "[format('{0}-NIC', parameters('virtualMachineName'))]",
     "nsgName": "[format('{0}-NSG', parameters('virtualMachineName'))]",
     "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
-    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('existingSubnet'))]",
-    "deployNetworkSecurityGroup": "[not(empty(parameters('allowRdpFromAddressPrefix')))]",
+    "createVirtualNetwork": "[equals(parameters('networkMode'), 'NewVnet')]",
+    "createSubnet": "[not(equals(parameters('networkMode'), 'ExistingSubnet'))]",
+    "attachNsgToSubnet": "[variables('createSubnet')]",
+    "attachNsgToNic": "[and(not(variables('createSubnet')), not(empty(parameters('allowRdpFromAddressPrefix'))))]",
+    "deployNetworkSecurityGroup": "[or(variables('attachNsgToSubnet'), variables('attachNsgToNic'))]",
+    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]",
+    "rdpSecurityRules": "[if(empty(parameters('allowRdpFromAddressPrefix')), createArray(), createArray(createObject('name', 'Allow-RDP-Inbound', 'properties', createObject('priority', 200, 'protocol', 'Tcp', 'access', 'Allow', 'direction', 'Inbound', 'sourceAddressPrefix', parameters('allowRdpFromAddressPrefix'), 'sourcePortRange', '*', 'destinationAddressPrefix', '*', 'destinationPortRange', '3389'))))]",
     "osVersionDefinitions": {
       "2019": {
         "publisher": "MicrosoftWindowsServer",
@@ -142,39 +173,92 @@
       "name": "[variables('nsgName')]",
       "location": "[parameters('location')]",
       "properties": {
-        "securityRules": [
+        "securityRules": "[concat(variables('rdpSecurityRules'), createArray(createObject('name', 'Allow-Traffic-RFC-1918', 'properties', createObject('priority', 300, 'protocol', '*', 'access', 'Allow', 'direction', 'Inbound', 'sourceAddressPrefixes', createArray('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'), 'sourcePortRange', '*', 'destinationAddressPrefix', '*', 'destinationPortRange', '*'))))]"
+      }
+    },
+    {
+      "condition": "[variables('createVirtualNetwork')]",
+      "type": "Microsoft.Network/virtualNetworks",
+      "apiVersion": "2024-05-01",
+      "name": "[parameters('virtualNetworkName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[parameters('virtualNetworkAddressPrefix')]"
+          ]
+        },
+        "subnets": [
           {
-            "name": "Allow-RDP-Inbound",
+            "name": "[parameters('subnetName')]",
             "properties": {
-              "priority": 200,
-              "protocol": "Tcp",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefix": "[parameters('allowRdpFromAddressPrefix')]",
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "3389"
-            }
-          },
-          {
-            "name": "Allow-Traffic-RFC-1918",
-            "properties": {
-              "priority": 300,
-              "protocol": "*",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefixes": [
-                "10.0.0.0/8",
-                "172.16.0.0/12",
-                "192.168.0.0/16"
-              ],
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "*"
+              "addressPrefix": "[parameters('subnetAddressPrefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+              }
             }
           }
         ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+      ]
+    },
+    {
+      "condition": "[equals(parameters('networkMode'), 'NewSubnet')]",
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('virtualNetworkName'), parameters('subnetName'))]",
+      "properties": {
+        "addressPrefix": "[parameters('subnetAddressPrefix')]",
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+      ]
+    },
+    {
+      "condition": "[parameters('deployPublicIpAddress')]",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('publicIPAddressName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "Standard"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "Static"
       }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('nicName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "enableIPForwarding": true,
+        "networkSecurityGroup": "[if(variables('attachNsgToNic'), createObject('id', resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))), null())]",
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[variables('subnetResourceId')]"
+              },
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": "[if(parameters('deployPublicIpAddress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
+            }
+          }
+        ]
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('virtualNetworkName'), parameters('subnetName'))]",
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('virtualNetworkName'))]",
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+      ]
     },
     {
       "type": "Microsoft.Compute/virtualMachines",
@@ -224,45 +308,6 @@
       ]
     },
     {
-      "type": "Microsoft.Network/networkInterfaces",
-      "apiVersion": "2024-05-01",
-      "name": "[variables('nicName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "enableIPForwarding": true,
-        "networkSecurityGroup": "[if(variables('deployNetworkSecurityGroup'), createObject('id', resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))), null())]",
-        "ipConfigurations": [
-          {
-            "name": "ipconfig1",
-            "properties": {
-              "subnet": {
-                "id": "[variables('subnetResourceId')]"
-              },
-              "privateIPAllocationMethod": "Dynamic",
-              "publicIPAddress": "[if(parameters('deployPublicIpAddress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
-            }
-          }
-        ]
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
-        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
-      ]
-    },
-    {
-      "condition": "[parameters('deployPublicIpAddress')]",
-      "type": "Microsoft.Network/publicIPAddresses",
-      "apiVersion": "2024-05-01",
-      "name": "[variables('publicIPAddressName')]",
-      "location": "[parameters('location')]",
-      "sku": {
-        "name": "Standard"
-      },
-      "properties": {
-        "publicIPAllocationMethod": "Static"
-      }
-    },
-    {
       "type": "Microsoft.Compute/virtualMachines/extensions",
       "apiVersion": "2024-07-01",
       "name": "[format('{0}/{1}', parameters('virtualMachineName'), variables('extensionName'))]",
@@ -283,5 +328,28 @@
         "[resourceId('Microsoft.Compute/virtualMachines', parameters('virtualMachineName'))]"
       ]
     }
-  ]
+  ],
+  "outputs": {
+    "privateIpAddress": {
+      "type": "string",
+      "metadata": {
+        "description": "Private IP address of the router, use this as the next hop in a route table."
+      },
+      "value": "[reference(resourceId('Microsoft.Network/networkInterfaces', variables('nicName')), '2024-05-01').ipConfigurations[0].properties.privateIPAddress]"
+    },
+    "publicIpAddress": {
+      "type": "string",
+      "metadata": {
+        "description": "Public IP address of the router, empty when deployPublicIpAddress is false."
+      },
+      "value": "[coalesce(tryGet(if(parameters('deployPublicIpAddress'), reference(resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName')), '2024-05-01', 'full'), null()), 'properties', 'ipAddress'), '')]"
+    },
+    "subnetId": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource ID of the subnet the router is attached to."
+      },
+      "value": "[variables('subnetResourceId')]"
+    }
+  }
 }
