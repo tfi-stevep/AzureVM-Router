@@ -1,8 +1,12 @@
+@description('Windows Router Machine Name')
+param virtualMachineName string
+
 @description('VM size')
 param virtualMachineSize string = 'Standard_B2s'
 
-@description('Windows Router Machine Name')
-param virtualMachineName string
+@description('Windows Server version. All options are Server Core, small disk, Generation 2 images.')
+@allowed(['2019', '2022', '2025'])
+param osVersion string = '2025'
 
 @description('Select Disk Type: Premium SSD (Premium_LRS), Standard SSD (StandardSSD_LRS), Standard HDD (Standard_LRS)')
 @allowed([
@@ -12,10 +16,6 @@ param virtualMachineName string
 ])
 param osDiskType string = 'Standard_LRS'
 
-@description('Windows Server version. All options are Server Core, small disk, Generation 2 images.')
-@allowed(['2019', '2022', '2025'])
-param osVersion string = '2025'
-
 @description('Admin username')
 param adminUsername string
 
@@ -23,20 +23,25 @@ param adminUsername string
 @secure()
 param adminPassword string
 
-@description('Existing Virtual Network Name')
-param existingVirtualNetworkName string
+@description('How the router is attached to the network. ExistingSubnet: join a virtual network and subnet that already exist. NewSubnet: join an existing virtual network and create a new subnet in it. NewVnet: create a new virtual network and subnet.')
+@allowed([
+  'ExistingSubnet'
+  'NewSubnet'
+  'NewVnet'
+])
+param networkMode string = 'ExistingSubnet'
 
-@description('Type Existing Subnet Name')
-param existingSubnet string
+@description('Virtual network name. Must already exist for ExistingSubnet and NewSubnet; created for NewVnet.')
+param virtualNetworkName string
 
-@description('Script that will be executed')
-param scriptUri string = uri(deployment().properties.templateLink.uri, '../../scripts/windows/winrouter.ps1')
+@description('Address space for the virtual network. Only used when networkMode is NewVnet.')
+param virtualNetworkAddressPrefix string = '10.100.0.0/16'
 
-@description('Command to run the script')
-param scriptCmd string = 'powershell.exe -ExecutionPolicy Unrestricted -File winrouter.ps1'
+@description('Subnet name. Must already exist for ExistingSubnet; created for NewSubnet and NewVnet.')
+param subnetName string
 
-@description('Azure region for all resources.')
-param location string = resourceGroup().location
+@description('CIDR for the subnet to create, can be as small as /29. Only used when networkMode is NewSubnet or NewVnet.')
+param subnetAddressPrefix string = '10.100.0.0/24'
 
 @description('Deploy Public IP Address')
 param deployPublicIpAddress bool = true
@@ -44,12 +49,47 @@ param deployPublicIpAddress bool = true
 @description('Source address prefix allowed to reach the VM on TCP 3389, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need RDP from the internet. Use Internet to allow any source (not recommended).')
 param allowRdpFromAddressPrefix string = ''
 
+@description('Script that will be executed. Defaults to the script alongside this template when deployed from a URL, and to the master branch on GitHub when deployed from a local file or a template spec.')
+param scriptUri string = uri(deployment().properties.?templateLink.?uri ?? 'https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/infra/arm/windows-router.json', '../../scripts/windows/winrouter.ps1')
+
+@description('Command to run the script')
+param scriptCmd string = 'powershell.exe -ExecutionPolicy Unrestricted -File winrouter.ps1'
+
+@description('Azure region for all resources.')
+param location string = resourceGroup().location
+
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-NIC'
 var nsgName = '${virtualMachineName}-NSG'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
-var subnetResourceId = resourceId('Microsoft.Network/virtualNetworks/subnets', existingVirtualNetworkName, existingSubnet)
-var deployNetworkSecurityGroup = !empty(allowRdpFromAddressPrefix)
+
+var createVirtualNetwork = networkMode == 'NewVnet'
+var createSubnet = networkMode != 'ExistingSubnet'
+
+// When the template creates the subnet it owns the subnet NSG. When joining a
+// subnet that already exists, the NSG goes on the NIC instead so that any NSG
+// already associated with that subnet is left untouched.
+var attachNsgToSubnet = createSubnet
+var attachNsgToNic = !createSubnet && !empty(allowRdpFromAddressPrefix)
+var deployNetworkSecurityGroup = attachNsgToSubnet || attachNsgToNic
+
+var subnetResourceId = resourceId('Microsoft.Network/virtualNetworks/subnets', virtualNetworkName, subnetName)
+
+var rdpSecurityRules = empty(allowRdpFromAddressPrefix) ? [] : [
+  {
+    name: 'Allow-RDP-Inbound'
+    properties: {
+      priority: 200
+      protocol: 'Tcp'
+      access: 'Allow'
+      direction: 'Inbound'
+      sourceAddressPrefix: allowRdpFromAddressPrefix
+      sourcePortRange: '*'
+      destinationAddressPrefix: '*'
+      destinationPortRange: '3389'
+    }
+  }
+]
 
 var osVersionDefinitions = {
   '2019': {
@@ -76,20 +116,7 @@ resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2024-05-0
   name: nsgName
   location: location
   properties: {
-    securityRules: [
-      {
-        name: 'Allow-RDP-Inbound'
-        properties: {
-          priority: 200
-          protocol: 'Tcp'
-          access: 'Allow'
-          direction: 'Inbound'
-          sourceAddressPrefix: allowRdpFromAddressPrefix
-          sourcePortRange: '*'
-          destinationAddressPrefix: '*'
-          destinationPortRange: '3389'
-        }
-      }
+    securityRules: concat(rdpSecurityRules, [
       {
         name: 'Allow-Traffic-RFC-1918'
         properties: {
@@ -107,8 +134,86 @@ resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2024-05-0
           destinationPortRange: '*'
         }
       }
+    ])
+  }
+}
+
+resource newVirtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = if (createVirtualNetwork) {
+  name: virtualNetworkName
+  location: location
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        virtualNetworkAddressPrefix
+      ]
+    }
+    subnets: [
+      {
+        name: subnetName
+        properties: {
+          addressPrefix: subnetAddressPrefix
+          networkSecurityGroup: {
+            id: networkSecurityGroup.id
+          }
+        }
+      }
     ]
   }
+}
+
+resource targetVirtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' existing = {
+  name: virtualNetworkName
+}
+
+resource addedSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = if (networkMode == 'NewSubnet') {
+  parent: targetVirtualNetwork
+  name: subnetName
+  properties: {
+    addressPrefix: subnetAddressPrefix
+    networkSecurityGroup: {
+      id: networkSecurityGroup.id
+    }
+  }
+}
+
+resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployPublicIpAddress) {
+  name: publicIPAddressName
+  location: location
+  sku: {
+    name: 'Standard'
+  }
+  properties: {
+    publicIPAllocationMethod: 'Static'
+  }
+}
+
+resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
+  name: nicName
+  location: location
+  properties: {
+    enableIPForwarding: true
+    networkSecurityGroup: attachNsgToNic ? {
+      id: networkSecurityGroup.id
+    } : null
+    ipConfigurations: [
+      {
+        name: 'ipconfig1'
+        properties: {
+          subnet: {
+            id: subnetResourceId
+          }
+          privateIPAllocationMethod: 'Dynamic'
+          publicIPAddress: deployPublicIpAddress ? {
+            id: publicIpAddress.id
+          } : null
+        }
+      }
+    ]
+  }
+  dependsOn: [
+    newVirtualNetwork
+    addedSubnet
+  ]
 }
 
 resource virtualMachine 'Microsoft.Compute/virtualMachines@2024-07-01' = {
@@ -154,42 +259,6 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   }
 }
 
-resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
-  name: nicName
-  location: location
-  properties: {
-    enableIPForwarding: true
-    networkSecurityGroup: deployNetworkSecurityGroup ? {
-      id: networkSecurityGroup.id
-    } : null
-    ipConfigurations: [
-      {
-        name: 'ipconfig1'
-        properties: {
-          subnet: {
-            id: subnetResourceId
-          }
-          privateIPAllocationMethod: 'Dynamic'
-          publicIPAddress: deployPublicIpAddress ? {
-            id: publicIpAddress.id
-          } : null
-        }
-      }
-    ]
-  }
-}
-
-resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (deployPublicIpAddress) {
-  name: publicIPAddressName
-  location: location
-  sku: {
-    name: 'Standard'
-  }
-  properties: {
-    publicIPAllocationMethod: 'Static'
-  }
-}
-
 resource virtualMachineExtension 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
   parent: virtualMachine
   name: extensionName
@@ -207,3 +276,12 @@ resource virtualMachineExtension 'Microsoft.Compute/virtualMachines/extensions@2
     }
   }
 }
+
+@description('Private IP address of the router, use this as the next hop in a route table.')
+output privateIpAddress string = nic.properties.ipConfigurations[0].properties.privateIPAddress
+
+@description('Public IP address of the router, empty when deployPublicIpAddress is false.')
+output publicIpAddress string = publicIpAddress.?properties.ipAddress ?? ''
+
+@description('Resource ID of the subnet the router is attached to.')
+output subnetId string = subnetResourceId

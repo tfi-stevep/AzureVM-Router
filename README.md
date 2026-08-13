@@ -19,14 +19,15 @@
 - [Overview](#overview)
 - [Quick start](#quick-start)
 - [Repository structure](#repository-structure)
+- [Network modes](#network-modes)
 - [Linux router](#linux-router)
-  - [Choosing a template](#choosing-a-template)
   - [Parameters](#linux-parameters)
 - [Windows router](#windows-router)
   - [Parameters](#windows-parameters)
 - [Network security defaults](#network-security-defaults)
 - [Using the router](#using-the-router)
 - [Deploying from the command line](#deploying-from-the-command-line)
+- [Publishing as a template spec](#publishing-as-a-template-spec)
 - [Setup scripts](#setup-scripts)
 - [Lab deployment scripts](#lab-deployment-scripts)
 - [Working with the templates](#working-with-the-templates)
@@ -57,13 +58,12 @@ These templates build a single-NIC virtual machine with **IP forwarding enabled*
 
 ## Quick start
 
-Pick a template and deploy straight to the portal:
+Pick a template and deploy straight to the portal. Each one can join an existing subnet, add a subnet to an existing VNET, or build the VNET from scratch — see [Network modes](#network-modes).
 
 | Template | Use when | Deploy | Visualize |
 |---|---|---|---|
-| **Linux — existing subnet** | You already have the VNET **and** the subnet | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) |
-| **Linux — new subnet** | You have the VNET and want the template to create a dedicated NVA subnet | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router-newsubnet.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router-newsubnet.json) |
-| **Windows — existing subnet** | You want a Windows Server router | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) |
+| **Linux router** | You want an Ubuntu router with forwarding and SNAT | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) |
+| **Windows router** | You want a Windows Server router | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) |
 
 > [!IMPORTANT]
 > Set **`allowSshFromAddressPrefix`** (Linux) or **`allowRdpFromAddressPrefix`** (Windows) to your own public IP, e.g. `203.0.113.4/32`. Standard SKU public IPs block **all** inbound traffic unless an NSG allows it. See [Network security defaults](#network-security-defaults).
@@ -84,24 +84,48 @@ Pick a template and deploy straight to the portal:
 ├── labs/
 │   ├── *.azcli           End-to-end Azure CLI lab builds
 │   └── conf/             Large BGP route lists used for scale testing
+├── tools/                Helper scripts for publishing template specs
 ├── docs/                 Supporting notes
 └── README.md
 ```
 
 ---
 
+## Network modes
+
+Both templates take a **`networkMode`** parameter that decides how the router attaches to the network, so a single template covers every starting point.
+
+| `networkMode` | Virtual network | Subnet | NSG placement |
+|---|---|---|---|
+| `ExistingSubnet` *(default)* | Must already exist | Must already exist | On the **NIC**, so an NSG already attached to that subnet is never overwritten |
+| `NewSubnet` | Must already exist | **Created** using `subnetAddressPrefix` | On the **new subnet** |
+| `NewVnet` | **Created** using `virtualNetworkAddressPrefix` | **Created** using `subnetAddressPrefix` | On the **new subnet** |
+
+The parameters that apply to each mode:
+
+| Parameter | `ExistingSubnet` | `NewSubnet` | `NewVnet` |
+|---|---|---|---|
+| `virtualNetworkName` | Name of the existing VNET | Name of the existing VNET | Name of the VNET to create |
+| `virtualNetworkAddressPrefix` | Ignored | Ignored | Address space of the new VNET |
+| `subnetName` | Name of the existing subnet | Name of the subnet to create | Name of the subnet to create |
+| `subnetAddressPrefix` | Ignored | CIDR of the new subnet | CIDR of the new subnet |
+
+> [!NOTE]
+> In the two subnet-creating modes the NSG is always created, because the template owns the new subnet. In `ExistingSubnet` mode the NSG is only created when you set `allowSshFromAddressPrefix` / `allowRdpFromAddressPrefix`, so a deployment into an existing subnet never attaches an unexpected NSG.
+
+Every deployment returns the values you need for a route table:
+
+| Output | Description |
+|---|---|
+| `privateIpAddress` | Private IP of the router — use this as the UDR next hop |
+| `publicIpAddress` | Public IP, empty when `deployPublicIpAddress` is `false` |
+| `subnetId` | Resource ID of the subnet the router joined |
+
+---
+
 ## Linux router
 
 Deploys an Ubuntu router with a single NIC and IP forwarding enabled. The setup script enables IPv4 and IPv6 forwarding, disables ICMP redirects, configures `iptables` SNAT (masquerade) to the internet for private-range sources, and persists all of it across reboots with `netfilter-persistent`.
-
-### Choosing a template
-
-| | `linux-router.json` | `linux-router-newsubnet.json` |
-|---|---|---|
-| Requires an existing VNET | Yes | Yes |
-| Requires an existing subnet | Yes (`existingSubnet`) | No — creates it (`subnetName`, `subnetPrefix`) |
-| NSG placement | On the **NIC**, so an existing subnet NSG is never overwritten | On the **new subnet** it creates |
-| NSG created when `allowSshFromAddressPrefix` is empty | No | Yes, allowing RFC 1918 inbound only |
 
 <a id="linux-parameters"></a>
 
@@ -112,10 +136,11 @@ Deploys an Ubuntu router with a single NIC and IP forwarding enabled. The setup 
 | `virtualMachineName` | string | *(required)* | Name of the router VM. |
 | `adminUsername` | string | *(required)* | Local admin user name. |
 | `adminPassword` | secure string | *(required)* | Local admin password. |
-| `existingVirtualNetworkName` | string | *(required)* | Name of the existing VNET. |
-| `existingSubnet` | string | *(required)* | Existing subnet name. **`linux-router` only.** |
-| `subnetName` | string | `lxnva-subnet` | Subnet to create. **`linux-router-newsubnet` only.** |
-| `subnetPrefix` | string | *(required)* | CIDR for the new subnet, can be as small as /29. **`linux-router-newsubnet` only.** |
+| `networkMode` | string | `ExistingSubnet` | `ExistingSubnet`, `NewSubnet` or `NewVnet` — see [Network modes](#network-modes). |
+| `virtualNetworkName` | string | *(required)* | VNET to join, or to create in `NewVnet` mode. |
+| `virtualNetworkAddressPrefix` | string | `10.100.0.0/16` | Address space for the new VNET. `NewVnet` only. |
+| `subnetName` | string | *(required)* | Subnet to join, or to create in `NewSubnet` / `NewVnet` mode. |
+| `subnetAddressPrefix` | string | `10.100.0.0/24` | CIDR for the new subnet, can be as small as /29. `NewSubnet` / `NewVnet` only. |
 | `osVersion` | string | `24.04` | Ubuntu LTS version — `24.04` or `22.04`. |
 | `virtualMachineSize` | string | `Standard_B2s` | VM size. |
 | `osDiskType` | string | `Standard_LRS` | `Premium_LRS`, `StandardSSD_LRS` or `Standard_LRS`. |
@@ -143,8 +168,11 @@ Deploys a **Windows Server Core, small disk, Generation 2** router with Trusted 
 | `virtualMachineName` | string | *(required)* | Name of the router VM. |
 | `adminUsername` | string | *(required)* | Local admin user name. |
 | `adminPassword` | secure string | *(required)* | Local admin password. |
-| `existingVirtualNetworkName` | string | *(required)* | Name of the existing VNET. |
-| `existingSubnet` | string | *(required)* | Existing subnet name. |
+| `networkMode` | string | `ExistingSubnet` | `ExistingSubnet`, `NewSubnet` or `NewVnet` — see [Network modes](#network-modes). |
+| `virtualNetworkName` | string | *(required)* | VNET to join, or to create in `NewVnet` mode. |
+| `virtualNetworkAddressPrefix` | string | `10.100.0.0/16` | Address space for the new VNET. `NewVnet` only. |
+| `subnetName` | string | *(required)* | Subnet to join, or to create in `NewSubnet` / `NewVnet` mode. |
+| `subnetAddressPrefix` | string | `10.100.0.0/24` | CIDR for the new subnet, can be as small as /29. `NewSubnet` / `NewVnet` only. |
 | `osVersion` | string | `2025` | Windows Server version — `2025`, `2022` or `2019`. |
 | `virtualMachineSize` | string | `Standard_B2s` | VM size. |
 | `osDiskType` | string | `Standard_LRS` | `Premium_LRS`, `StandardSSD_LRS` or `Standard_LRS`. |
@@ -181,7 +209,7 @@ Deploying the VM does not by itself send any traffic through it. To route traffi
 
 ## Deploying from the command line
 
-Deploy the generated ARM template directly from GitHub:
+Deploy the generated ARM template directly from GitHub. Joining an existing subnet:
 
 ```bash
 az group create -n rg-nva -l eastus
@@ -193,17 +221,67 @@ az deployment group create \
       virtualMachineName=nva1 \
       adminUsername=azureuser \
       adminPassword='<your-password>' \
-      existingVirtualNetworkName=vnet1 \
-      existingSubnet=nva-subnet \
+      networkMode=ExistingSubnet \
+      virtualNetworkName=vnet1 \
+      subnetName=nva-subnet \
       allowSshFromAddressPrefix="$(curl -s ifconfig.me)/32"
 ```
 
+Building the VNET and subnet from scratch:
+
+```bash
+az deployment group create \
+  -g rg-nva \
+  --template-uri https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/infra/arm/linux-router.json \
+  --parameters \
+      virtualMachineName=nva1 \
+      adminUsername=azureuser \
+      adminPassword='<your-password>' \
+      networkMode=NewVnet \
+      virtualNetworkName=vnet-nva \
+      virtualNetworkAddressPrefix=10.100.0.0/16 \
+      subnetName=lxnva-subnet \
+      subnetAddressPrefix=10.100.0.0/24 \
+      allowSshFromAddressPrefix="$(curl -s ifconfig.me)/32"
+```
+
+Use `networkMode=NewSubnet` to add the subnet to a VNET that already exists.
+
 > [!WARNING]
-> `scriptUri` defaults to a path resolved **relative to the template's own URL**, so it automatically follows the branch or fork you deploy from. That resolution relies on `deployment().properties.templateLink`, which does **not** exist when you deploy a local file with `--template-file`. In that case pass the script location explicitly:
+> `scriptUri` defaults to a path resolved **relative to the template's own URL**, so it automatically follows the branch or fork you deploy from. That resolution relies on `deployment().properties.templateLink`, which is not populated when you deploy a local file with `--template-file` or from a template spec. In those cases the default falls back to the `master` branch on GitHub. Pass the script location explicitly to pin it elsewhere:
 >
 > ```bash
 > --parameters scriptUri=https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/scripts/linux/linuxrouter.sh
 > ```
+
+---
+
+## Publishing as a template spec
+
+[Template specs](https://learn.microsoft.com/azure/azure-resource-manager/templates/template-specs) let you store a versioned template in your own subscription and share it through Azure RBAC, so consumers deploy it without needing access to this repository. `tools/publish-templatespecs.sh` publishes both routers:
+
+```bash
+./tools/publish-templatespecs.sh rg-templatespecs 1.0.0 eastus
+```
+
+Then deploy from the spec:
+
+```bash
+az deployment group create \
+  -g rg-nva \
+  --template-spec "$(az ts show -g rg-templatespecs -n linux-router --version 1.0.0 --query id -o tsv)" \
+  --parameters \
+      virtualMachineName=nva1 \
+      adminUsername=azureuser \
+      adminPassword='<your-password>' \
+      networkMode=NewVnet \
+      virtualNetworkName=vnet-nva \
+      subnetName=lxnva-subnet \
+      allowSshFromAddressPrefix="$(curl -s ifconfig.me)/32"
+```
+
+> [!NOTE]
+> A template spec deployment does not expose the original template URL, so `scriptUri` falls back to the `master` branch of this repository. Pass `scriptUri` explicitly if you host the setup scripts somewhere else.
 
 ---
 
@@ -247,9 +325,8 @@ End-to-end environment builds under `labs/`, intended to be run interactively li
 Rebuild the ARM JSON after changing any Bicep file:
 
 ```bash
-az bicep build --file infra/bicep/linux-router.bicep           --outfile infra/arm/linux-router.json
-az bicep build --file infra/bicep/linux-router-newsubnet.bicep --outfile infra/arm/linux-router-newsubnet.json
-az bicep build --file infra/bicep/windows-router.bicep         --outfile infra/arm/windows-router.json
+az bicep build --file infra/bicep/linux-router.bicep   --outfile infra/arm/linux-router.json
+az bicep build --file infra/bicep/windows-router.bicep --outfile infra/arm/windows-router.json
 ```
 
 CI runs `bicep lint`, rebuilds every template and fails if `infra/arm/` differs from the committed output. It also checks the shell scripts for syntax errors and rejects CRLF line endings, which break the shebang when the Custom Script Extension runs a script on Linux.
@@ -267,9 +344,11 @@ The templates and scripts were modernised after several Azure platform retiremen
 | **Public IP** | Basic SKU (retired September 2025) replaced with **Standard SKU, static allocation** across all templates and lab scripts. |
 | **Network security** | Added `allowSshFromAddressPrefix` / `allowRdpFromAddressPrefix` so the templates can create the NSG that Standard SKU public IPs now require, together with an RFC 1918 rule so forwarded traffic still flows. Lab scripts that previously created no NSG now create one. |
 | **Provisioning reliability** | Fixed a latent **cloud-init race** that intermittently failed package installation with `Unable to locate package netfilter-persistent`. All package-installing scripts now wait for cloud-init to finish first. |
-| **Repository layout** | Reorganised into `infra/`, `scripts/`, `labs/` and `docs/`, with consistent file naming. |
+| **Repository layout** | Reorganised into `infra/`, `scripts/`, `labs/`, `tools/` and `docs/`, with consistent file naming. |
+| **Consolidated network modes** | The separate "existing subnet" and "new subnet" templates were merged into one template per OS. A `networkMode` parameter now selects **`ExistingSubnet`**, **`NewSubnet`** or **`NewVnet`**, and the capability was extended to Windows, which previously only supported an existing subnet. Templates now also emit `privateIpAddress`, `publicIpAddress` and `subnetId` outputs. |
+| **Template specs** | Added `tools/publish-templatespecs.sh` and made `scriptUri` resolve safely when `deployment().properties.templateLink` is unavailable, so the templates work identically from a URL, a local file or a template spec. |
 | **Quality gates** | Added GitHub Actions validation and a `.gitattributes` that pins shell scripts to LF. |
-| **Documentation** | Rewrote this README with parameter references, template comparisons, security guidance and coverage of every script in the repository. |
+| **Documentation** | Rewrote this README with parameter references, network mode guidance, security guidance and coverage of every script in the repository. |
 
 All templates and the affected lab scripts were verified by deploying them to Azure and confirming NSG placement, inbound reachability, extension success, in-guest forwarding and NAT state, end-to-end egress through the NVA, and persistence across a reboot.
 
