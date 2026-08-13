@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.46.1.21595",
-      "templateHash": "12254805934774540914"
+      "templateHash": "2884941074303245104"
     }
   },
   "parameters": {
@@ -63,15 +63,22 @@
         "description": "Existing Virtual Network Name"
       }
     },
-    "existingSubnet": {
+    "subnetName": {
+      "type": "string",
+      "defaultValue": "lxnva-subnet",
+      "metadata": {
+        "description": "Name of the Subnet where NVA will reside"
+      }
+    },
+    "subnetPrefix": {
       "type": "string",
       "metadata": {
-        "description": "Type Existing Subnet Name"
+        "description": "Specify Subnet Prefix. It can be small as /29"
       }
     },
     "scriptUri": {
       "type": "string",
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')]",
+      "defaultValue": "[uri(deployment().properties.templateLink.uri, '../../scripts/linux/linuxrouter.sh')]",
       "metadata": {
         "description": "Script that will be executed"
       }
@@ -108,10 +115,8 @@
   "variables": {
     "extensionName": "CustomScript",
     "nicName": "[format('{0}-NIC', parameters('virtualMachineName'))]",
-    "nsgName": "[format('{0}-NSG', parameters('virtualMachineName'))]",
     "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
-    "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('existingSubnet'))]",
-    "deployNetworkSecurityGroup": "[not(empty(parameters('allowSshFromAddressPrefix')))]",
+    "sshSecurityRules": "[if(empty(parameters('allowSshFromAddressPrefix')), createArray(), createArray(createObject('name', 'Allow-SSH-Inbound', 'properties', createObject('priority', 200, 'protocol', 'Tcp', 'access', 'Allow', 'direction', 'Inbound', 'sourceAddressPrefix', parameters('allowSshFromAddressPrefix'), 'sourcePortRange', '*', 'destinationAddressPrefix', '*', 'destinationPortRange', '22'))))]",
     "osVersionDefinitions": {
       "22.04": {
         "publisher": "Canonical",
@@ -128,6 +133,29 @@
     }
   },
   "resources": [
+    {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2024-05-01",
+      "name": "default-nsg",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": "[concat(variables('sshSecurityRules'), createArray(createObject('name', 'Allow-Traffic-RFC-1918', 'properties', createObject('priority', 300, 'protocol', '*', 'access', 'Allow', 'direction', 'Inbound', 'sourceAddressPrefixes', createArray('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'), 'sourcePortRange', '*', 'destinationAddressPrefix', '*', 'destinationPortRange', '*'))))]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/virtualNetworks/subnets",
+      "apiVersion": "2024-05-01",
+      "name": "[format('{0}/{1}', parameters('existingVirtualNetworkName'), parameters('subnetName'))]",
+      "properties": {
+        "addressPrefix": "[parameters('subnetPrefix')]",
+        "networkSecurityGroup": {
+          "id": "[resourceId('Microsoft.Network/networkSecurityGroups', 'default-nsg')]"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', 'default-nsg')]"
+      ]
+    },
     {
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2024-07-01",
@@ -169,60 +197,18 @@
       ]
     },
     {
-      "condition": "[variables('deployNetworkSecurityGroup')]",
-      "type": "Microsoft.Network/networkSecurityGroups",
-      "apiVersion": "2024-05-01",
-      "name": "[variables('nsgName')]",
-      "location": "[parameters('location')]",
-      "properties": {
-        "securityRules": [
-          {
-            "name": "Allow-SSH-Inbound",
-            "properties": {
-              "priority": 200,
-              "protocol": "Tcp",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefix": "[parameters('allowSshFromAddressPrefix')]",
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "22"
-            }
-          },
-          {
-            "name": "Allow-Traffic-RFC-1918",
-            "properties": {
-              "priority": 300,
-              "protocol": "*",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefixes": [
-                "10.0.0.0/8",
-                "172.16.0.0/12",
-                "192.168.0.0/16"
-              ],
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "*"
-            }
-          }
-        ]
-      }
-    },
-    {
       "type": "Microsoft.Network/networkInterfaces",
       "apiVersion": "2024-05-01",
       "name": "[variables('nicName')]",
       "location": "[parameters('location')]",
       "properties": {
         "enableIPForwarding": true,
-        "networkSecurityGroup": "[if(variables('deployNetworkSecurityGroup'), createObject('id', resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))), null())]",
         "ipConfigurations": [
           {
             "name": "ipconfig1",
             "properties": {
               "subnet": {
-                "id": "[variables('subnetResourceId')]"
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]"
               },
               "privateIPAllocationMethod": "Dynamic",
               "publicIPAddress": "[if(parameters('deployPublicIpAddress'), createObject('id', resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))), null())]"
@@ -231,8 +217,8 @@
         ]
       },
       "dependsOn": [
-        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
-        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
+        "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]",
+        "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('subnetName'))]"
       ]
     },
     {

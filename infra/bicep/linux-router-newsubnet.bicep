@@ -33,7 +33,7 @@ param subnetName string = 'lxnva-subnet'
 param subnetPrefix string
 
 @description('Script that will be executed')
-param scriptUri string = uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')
+param scriptUri string = uri(deployment().properties.templateLink.uri, '../../scripts/linux/linuxrouter.sh')
 
 @description('Command to run the script')
 param scriptCmd string = 'sh linuxrouter.sh'
