@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.44.1.10279",
-      "templateHash": "17441905376390406829"
+      "version": "0.46.1.21595",
+      "templateHash": "8395921165082925479"
     }
   },
   "parameters": {
@@ -19,7 +19,7 @@
     "virtualMachineName": {
       "type": "string",
       "metadata": {
-        "description": "Linux Router Machine Name"
+        "description": "Windows Router Machine Name"
       }
     },
     "osDiskType": {
@@ -36,13 +36,14 @@
     },
     "osVersion": {
       "type": "string",
-      "defaultValue": "24.04",
+      "defaultValue": "2025",
       "allowedValues": [
-        "22.04",
-        "24.04"
+        "2019",
+        "2022",
+        "2025"
       ],
       "metadata": {
-        "description": "Ubuntu OS Version"
+        "description": "Windows Server version. All options are Server Core, small disk, Generation 2 images."
       }
     },
     "adminUsername": {
@@ -71,14 +72,14 @@
     },
     "scriptUri": {
       "type": "string",
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')]",
+      "defaultValue": "[uri(deployment().properties.templateLink.uri, '../../scripts/windows/winrouter.ps1')]",
       "metadata": {
         "description": "Script that will be executed"
       }
     },
     "scriptCmd": {
       "type": "string",
-      "defaultValue": "sh linuxrouter.sh",
+      "defaultValue": "powershell.exe -ExecutionPolicy Unrestricted -File winrouter.ps1",
       "metadata": {
         "description": "Command to run the script"
       }
@@ -96,29 +97,85 @@
       "metadata": {
         "description": "Deploy Public IP Address"
       }
+    },
+    "allowRdpFromAddressPrefix": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Source address prefix allowed to reach the VM on TCP 3389, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need RDP from the internet. Use Internet to allow any source (not recommended)."
+      }
     }
   },
   "variables": {
     "extensionName": "CustomScript",
     "nicName": "[format('{0}-NIC', parameters('virtualMachineName'))]",
+    "nsgName": "[format('{0}-NSG', parameters('virtualMachineName'))]",
     "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
     "subnetResourceId": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('existingVirtualNetworkName'), parameters('existingSubnet'))]",
+    "deployNetworkSecurityGroup": "[not(empty(parameters('allowRdpFromAddressPrefix')))]",
     "osVersionDefinitions": {
-      "22.04": {
-        "publisher": "Canonical",
-        "offer": "0001-com-ubuntu-server-jammy",
-        "sku": "22_04-lts-gen2",
+      "2019": {
+        "publisher": "MicrosoftWindowsServer",
+        "offer": "WindowsServer",
+        "sku": "2019-datacenter-core-smalldisk-g2",
         "version": "latest"
       },
-      "24.04": {
-        "publisher": "Canonical",
-        "offer": "ubuntu-24_04-lts",
-        "sku": "server",
+      "2022": {
+        "publisher": "MicrosoftWindowsServer",
+        "offer": "WindowsServer",
+        "sku": "2022-datacenter-core-smalldisk-g2",
+        "version": "latest"
+      },
+      "2025": {
+        "publisher": "MicrosoftWindowsServer",
+        "offer": "WindowsServer",
+        "sku": "2025-datacenter-core-smalldisk-g2",
         "version": "latest"
       }
     }
   },
   "resources": [
+    {
+      "condition": "[variables('deployNetworkSecurityGroup')]",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "apiVersion": "2024-05-01",
+      "name": "[variables('nsgName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "securityRules": [
+          {
+            "name": "Allow-RDP-Inbound",
+            "properties": {
+              "priority": 200,
+              "protocol": "Tcp",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefix": "[parameters('allowRdpFromAddressPrefix')]",
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "3389"
+            }
+          },
+          {
+            "name": "Allow-Traffic-RFC-1918",
+            "properties": {
+              "priority": 300,
+              "protocol": "*",
+              "access": "Allow",
+              "direction": "Inbound",
+              "sourceAddressPrefixes": [
+                "10.0.0.0/8",
+                "172.16.0.0/12",
+                "192.168.0.0/16"
+              ],
+              "sourcePortRange": "*",
+              "destinationAddressPrefix": "*",
+              "destinationPortRange": "*"
+            }
+          }
+        ]
+      }
+    },
     {
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2024-07-01",
@@ -132,6 +189,13 @@
         },
         "hardwareProfile": {
           "vmSize": "[parameters('virtualMachineSize')]"
+        },
+        "securityProfile": {
+          "securityType": "TrustedLaunch",
+          "uefiSettings": {
+            "secureBootEnabled": true,
+            "vTpmEnabled": true
+          }
         },
         "storageProfile": {
           "imageReference": "[variables('osVersionDefinitions')[parameters('osVersion')]]",
@@ -166,6 +230,7 @@
       "location": "[parameters('location')]",
       "properties": {
         "enableIPForwarding": true,
+        "networkSecurityGroup": "[if(variables('deployNetworkSecurityGroup'), createObject('id', resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))), null())]",
         "ipConfigurations": [
           {
             "name": "ipconfig1",
@@ -180,6 +245,7 @@
         ]
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]",
         "[resourceId('Microsoft.Network/publicIPAddresses', variables('publicIPAddressName'))]"
       ]
     },
@@ -202,9 +268,9 @@
       "name": "[format('{0}/{1}', parameters('virtualMachineName'), variables('extensionName'))]",
       "location": "[parameters('location')]",
       "properties": {
-        "publisher": "Microsoft.Azure.Extensions",
-        "type": "CustomScript",
-        "typeHandlerVersion": "2.0",
+        "publisher": "Microsoft.Compute",
+        "type": "CustomScriptExtension",
+        "typeHandlerVersion": "1.10",
         "autoUpgradeMinorVersion": true,
         "settings": {
           "fileUris": [

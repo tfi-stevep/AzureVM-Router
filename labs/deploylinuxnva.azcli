@@ -1,0 +1,34 @@
+##parameters#
+rg="nva-lab" #set your resource group
+location=centralus #set your Azure region
+username=azureuser
+password=Msft123Msft123
+vnetname=vnet1
+subnetname=nvasubnet
+nvaname=linux-nva
+mypip=$(curl -s -4 ifconfig.io) #your public IP, used to allow inbound SSH
+
+#Resource Group
+az group create --name $rg --location $location
+
+## Create VNET and NVA
+az network vnet create --resource-group $rg --name $vnetname --location $location --address-prefixes 10.1.0.0/16 --subnet-name $subnetname --subnet-prefix 10.1.10.0/24 -o none
+
+# NSG: Standard SKU public IPs are closed to inbound traffic until an NSG allows it.
+az network nsg create --resource-group $rg --name default-nsg-$location --location $location -o none
+az network nsg rule create -g $rg --nsg-name default-nsg-$location -n 'default-allow-ssh' --direction Inbound --priority 100 --source-address-prefixes $mypip --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges 22 --access Allow --protocol Tcp --description "Allow inbound SSH" --output none
+az network nsg rule create -g $rg --nsg-name default-nsg-$location -n 'allow-nva-breakout' --direction Inbound --priority 200 --source-address-prefixes VirtualNetwork --source-port-ranges '*' --destination-address-prefixes '*' --destination-port-ranges "*" --access Allow --protocol "*" --description "Allow NVA single NIC use Internet Breakout" --output none
+az network vnet subnet update -g $rg --name $subnetname --vnet-name $vnetname --network-security-group default-nsg-$location -o none
+
+# NVA + Config script to enable NAT
+az network public-ip create --name $nvaname-pip --resource-group $rg --location $location --allocation-method Static --sku Standard
+az network nic create --name $nvaname-nic --resource-group $rg --subnet $subnetname --vnet $vnetname --public-ip-address $nvaname-pip --ip-forwarding true -o none
+az vm create --resource-group $rg --location $location --name $nvaname --size Standard_B1s --nics $nvaname-nic  --image Ubuntu2404 --admin-username $username --admin-password $password -o none
+# Enable routing and NAT on Linux NVA:
+scripturi="https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/scripts/linux/linuxrouter.sh"
+az vm extension set --resource-group $rg --vm-name $nvaname  --name customScript --publisher Microsoft.Azure.Extensions \
+--protected-settings "{\"fileUris\": [\"$scripturi\"],\"commandToExecute\": \"./linuxrouter.sh\"}" \
+--no-wait
+
+#Clean up
+az group delete -g $rg --no-wait --yes

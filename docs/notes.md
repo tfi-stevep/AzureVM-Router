@@ -7,6 +7,6 @@ az vm create \
     --custom-data cloud-init.txt
 
 
-az network public-ip create --name $spoke1name-vm-pip --resource-group $rg --location $vhub1location --allocation-method Dynamic --output none
+az network public-ip create --name $spoke1name-vm-pip --resource-group $rg --location $vhub1location --allocation-method Static --sku Standard --output none
 az network nic create --resource-group $rg -n $spoke1name-vm-nic --location $vhub1location --subnet vmsubnet --vnet-name $spoke1name-vnet --public-ip-address $spoke1name-vm-pip  --output none
 az vm create -n $spoke1name-vm -g $rg --image Ubuntu2404 --size Standard_B1s --admin-username $username --admin-password $password --nics $spoke1name-vm-nic --no-wait --location $vhub1location  --output none

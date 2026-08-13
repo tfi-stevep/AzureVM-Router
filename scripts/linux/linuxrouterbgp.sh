@@ -18,6 +18,10 @@ bgp_network1=$3
 routeserver_IP1=$4
 routeserver_IP2=$5
 
+# Wait for cloud-init to finish so apt does not run against superseded
+# package indexes, which fails with "Unable to locate package".
+cloud-init status --wait >/dev/null 2>&1 || true
+
 sudo apt-get -y update
 
 ## Install the Quagga routing daemon

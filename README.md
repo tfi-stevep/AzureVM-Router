@@ -1,30 +1,305 @@
-# Deploying Azure VM as Router
+<h1 align="center">Azure VM as Router</h1>
 
-Deploy Azure VM (Linux or Windows) with IP forwarder enabled to be used as Router. All deployments in this document assumes you have already and existing Virtual Network (VNET) and Subnet.
+<p align="center">
+  Deploy an Azure VM (Linux or Windows) with IP forwarding enabled, to be used as a router / Network Virtual Appliance (NVA).
+</p>
 
-## Deploy Linux VM as Router (IPv4 and IPv6) + NAT to Internet
+<p align="center">
+  <a href="https://github.com/dmauser/AzureVM-Router/actions/workflows/validate-templates.yml"><img alt="Validate templates" src="https://github.com/dmauser/AzureVM-Router/actions/workflows/validate-templates.yml/badge.svg"></a>
+  <img alt="Bicep" src="https://img.shields.io/badge/IaC-Bicep-blue">
+  <img alt="Ubuntu" src="https://img.shields.io/badge/Ubuntu-24.04%20%7C%2022.04-E95420?logo=ubuntu&logoColor=white">
+  <img alt="Windows Server" src="https://img.shields.io/badge/Windows%20Server-2025%20%7C%202022%20%7C%202019-0078D4?logo=windows&logoColor=white">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
 
-This template deploys a Linux Router (Ubuntu 24.04 LTS by default, 22.04 LTS selectable via the `osVersion` parameter) to an existing Virtual Network (VNET)/Subnet using a Single NIC + IP Forwarding Enabled. The ARM templates (`LinuxRouter.json`, `LinuxRouter-newsubnet.json`) are generated from the Bicep sources (`LinuxRouter.bicep`, `LinuxRouter-newsubnet.bicep`).
+---
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2FLinuxRouter.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2FLinuxRouter.json)
+## Table of contents
 
-### Network security defaults
+- [Overview](#overview)
+- [Quick start](#quick-start)
+- [Repository structure](#repository-structure)
+- [Linux router](#linux-router)
+  - [Choosing a template](#choosing-a-template)
+  - [Parameters](#linux-parameters)
+- [Windows router](#windows-router)
+  - [Parameters](#windows-parameters)
+- [Network security defaults](#network-security-defaults)
+- [Using the router](#using-the-router)
+- [Deploying from the command line](#deploying-from-the-command-line)
+- [Setup scripts](#setup-scripts)
+- [Lab deployment scripts](#lab-deployment-scripts)
+- [Working with the templates](#working-with-the-templates)
+- [Recent improvements](#recent-improvements)
+- [Roadmap](#roadmap)
+- [Contributing](#contributing)
+- [License](#license)
 
-The templates deploy a **Standard SKU** public IP (the previously used Basic SKU was retired by Azure in September 2025). Standard public IPs are *secure by default*, which changes the out-of-the-box connectivity compared to older versions of these templates:
+---
 
-- **Inbound traffic from the Internet is blocked** unless a Network Security Group (NSG) explicitly allows it. This means you cannot SSH into the router from the Internet right after deployment. To manage the VM, either connect from inside your network (the `LinuxRouter-newsubnet.json` template deploys an NSG that allows inbound traffic from RFC 1918 private ranges), use Azure Bastion, or add an NSG rule that allows SSH from your trusted IP addresses.
-- **Outbound traffic to the Internet is allowed.** NSGs permit outbound traffic by default, and the attached public IP provides an *explicit* outbound method (SNAT), so the setup script can install packages during provisioning. This also keeps the templates working after Azure's retirement of *default outbound access* for new deployments.
-- **If you disable the public IP** (`deployPublicIpAddress=false`), make sure the subnet has another explicit outbound method — e.g. a NAT Gateway, an Azure Firewall / NVA route, or Load Balancer outbound rules. On virtual networks without default outbound access (the default for newly created VNets), the VM otherwise has no Internet access and the setup script cannot install its packages.
+## Overview
 
-## Deploy Windows VM as Router (IPv4 and IPv6)
+These templates build a single-NIC virtual machine with **IP forwarding enabled** on both the Azure NIC and inside the guest OS, so it can route traffic on behalf of other subnets. A Custom Script Extension applies the in-guest configuration at provisioning time.
 
-This template deploys a Windows (Server 2019 Core - Small Disk) Router to an existing Virtual Network (VNET)/Subnet using a Single NIC + IP Forwarding Enabled.
+| | Linux router | Windows router |
+|---|---|---|
+| Operating system | Ubuntu 24.04 LTS (default) or 22.04 LTS | Windows Server 2025 / 2022 / 2019, Server Core, small disk, Gen 2 |
+| IPv4 + IPv6 forwarding | Yes | Yes |
+| NAT / SNAT to the internet | Yes (`iptables` masquerade, persisted) | No |
+| ICMP echo reply enabled | Yes | Yes (Windows Firewall rule enabled by the script) |
+| Trusted Launch | No | Yes (Secure Boot + vTPM) |
+| Default size | `Standard_B2s` | `Standard_B2s` |
 
-[![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2FWinRouter.json)
-[![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2FWinRouter.json)
+> [!NOTE]
+> The ARM JSON under `infra/arm/` is **generated** from the Bicep sources under `infra/bicep/`. Edit the Bicep, then rebuild — never hand-edit the JSON. CI enforces this.
+
+---
+
+## Quick start
+
+Pick a template and deploy straight to the portal:
+
+| Template | Use when | Deploy | Visualize |
+|---|---|---|---|
+| **Linux — existing subnet** | You already have the VNET **and** the subnet | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) |
+| **Linux — new subnet** | You have the VNET and want the template to create a dedicated NVA subnet | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router-newsubnet.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router-newsubnet.json) |
+| **Windows — existing subnet** | You want a Windows Server router | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) |
+
+> [!IMPORTANT]
+> Set **`allowSshFromAddressPrefix`** (Linux) or **`allowRdpFromAddressPrefix`** (Windows) to your own public IP, e.g. `203.0.113.4/32`. Standard SKU public IPs block **all** inbound traffic unless an NSG allows it. See [Network security defaults](#network-security-defaults).
+
+---
+
+## Repository structure
+
+```
+.
+├── .github/workflows/    CI: Bicep build + lint, ARM drift check, shell syntax / CRLF check
+├── infra/
+│   ├── bicep/            Template sources — edit these
+│   └── arm/              Generated ARM JSON — deploy these, never hand-edit
+├── scripts/
+│   ├── linux/            Custom Script Extension payloads (.sh) and cloud-init
+│   └── windows/          Custom Script Extension payload (.ps1)
+├── labs/
+│   ├── *.azcli           End-to-end Azure CLI lab builds
+│   └── conf/             Large BGP route lists used for scale testing
+├── docs/                 Supporting notes
+└── README.md
+```
+
+---
+
+## Linux router
+
+Deploys an Ubuntu router with a single NIC and IP forwarding enabled. The setup script enables IPv4 and IPv6 forwarding, disables ICMP redirects, configures `iptables` SNAT (masquerade) to the internet for private-range sources, and persists all of it across reboots with `netfilter-persistent`.
+
+### Choosing a template
+
+| | `linux-router.json` | `linux-router-newsubnet.json` |
+|---|---|---|
+| Requires an existing VNET | Yes | Yes |
+| Requires an existing subnet | Yes (`existingSubnet`) | No — creates it (`subnetName`, `subnetPrefix`) |
+| NSG placement | On the **NIC**, so an existing subnet NSG is never overwritten | On the **new subnet** it creates |
+| NSG created when `allowSshFromAddressPrefix` is empty | No | Yes, allowing RFC 1918 inbound only |
+
+<a id="linux-parameters"></a>
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `virtualMachineName` | string | *(required)* | Name of the router VM. |
+| `adminUsername` | string | *(required)* | Local admin user name. |
+| `adminPassword` | secure string | *(required)* | Local admin password. |
+| `existingVirtualNetworkName` | string | *(required)* | Name of the existing VNET. |
+| `existingSubnet` | string | *(required)* | Existing subnet name. **`linux-router` only.** |
+| `subnetName` | string | `lxnva-subnet` | Subnet to create. **`linux-router-newsubnet` only.** |
+| `subnetPrefix` | string | *(required)* | CIDR for the new subnet, can be as small as /29. **`linux-router-newsubnet` only.** |
+| `osVersion` | string | `24.04` | Ubuntu LTS version — `24.04` or `22.04`. |
+| `virtualMachineSize` | string | `Standard_B2s` | VM size. |
+| `osDiskType` | string | `Standard_LRS` | `Premium_LRS`, `StandardSSD_LRS` or `Standard_LRS`. |
+| `deployPublicIpAddress` | bool | `true` | Create a Standard SKU static public IP. |
+| `allowSshFromAddressPrefix` | string | `''` | Source prefix allowed inbound on TCP 22. Empty means no SSH rule. |
+| `scriptUri` | string | resolved from the template's own URL | Setup script to run. |
+| `scriptCmd` | string | `sh linuxrouter.sh` | Command used to run the script. |
+| `location` | string | resource group location | Azure region. |
+
+---
+
+## Windows router
+
+Deploys a **Windows Server Core, small disk, Generation 2** router with Trusted Launch (Secure Boot + vTPM) enabled. The setup script enables IPv4 and IPv6 forwarding on all interfaces and enables the inbound ICMPv4/ICMPv6 echo request firewall rules, which Windows blocks by default.
+
+> [!NOTE]
+> The Windows router forwards traffic but does **not** perform NAT. If you need SNAT to the internet, use the Linux router or add Routing and Remote Access / NAT separately.
+
+<a id="windows-parameters"></a>
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `virtualMachineName` | string | *(required)* | Name of the router VM. |
+| `adminUsername` | string | *(required)* | Local admin user name. |
+| `adminPassword` | secure string | *(required)* | Local admin password. |
+| `existingVirtualNetworkName` | string | *(required)* | Name of the existing VNET. |
+| `existingSubnet` | string | *(required)* | Existing subnet name. |
+| `osVersion` | string | `2025` | Windows Server version — `2025`, `2022` or `2019`. |
+| `virtualMachineSize` | string | `Standard_B2s` | VM size. |
+| `osDiskType` | string | `Standard_LRS` | `Premium_LRS`, `StandardSSD_LRS` or `Standard_LRS`. |
+| `deployPublicIpAddress` | bool | `true` | Create a Standard SKU static public IP. |
+| `allowRdpFromAddressPrefix` | string | `''` | Source prefix allowed inbound on TCP 3389. Empty means no RDP rule. |
+| `scriptUri` | string | resolved from the template's own URL | Setup script to run. |
+| `scriptCmd` | string | `powershell.exe -ExecutionPolicy Unrestricted -File winrouter.ps1` | Command used to run the script. |
+| `location` | string | resource group location | Azure region. |
+
+---
+
+## Network security defaults
+
+The templates deploy a **Standard SKU** public IP, because the Basic SKU was retired by Azure in September 2025. Standard public IPs are *secure by default*, which changes the out-of-the-box behaviour compared to older versions of these templates:
+
+- **Inbound internet traffic is blocked** unless an NSG explicitly allows it. Set `allowSshFromAddressPrefix` / `allowRdpFromAddressPrefix` to a trusted source — `203.0.113.4/32` for a single address, or a CIDR range for an office network. The template then creates an NSG with the matching management rule (priority 200) plus an RFC 1918 allow rule (priority 300) so forwarded traffic keeps flowing under the new default-deny. Leaving the parameter empty keeps the previous behaviour and means you manage the VM from inside your network or through Azure Bastion. Setting it to `Internet` or `*` allows access from anywhere and is **not recommended**.
+- **Outbound internet traffic is allowed.** NSGs permit outbound by default, and the attached public IP provides an *explicit* outbound method (SNAT), so the setup script can install packages during provisioning. This also keeps the templates working after Azure's retirement of default outbound access for new deployments.
+- **If you set `deployPublicIpAddress=false`**, make sure the subnet has another explicit outbound method — a NAT Gateway, a route through Azure Firewall or another NVA, or Load Balancer outbound rules. Without one, the VM has no internet access on a modern VNET and the setup script cannot install its packages.
+
+---
+
+## Using the router
+
+Deploying the VM does not by itself send any traffic through it. To route traffic:
+
+1. Create a **route table** and add a user-defined route, for example `0.0.0.0/0` with next hop type **Virtual appliance** and the router's **private** IP as the next hop address.
+2. Associate the route table with the source subnets whose traffic should traverse the router.
+3. Make sure the router's NSG allows the traffic you intend to forward — the templates add an RFC 1918 allow rule for exactly this reason.
+
+> [!TIP]
+> Do **not** associate the route table with the router's own subnet using a default route pointing at itself; that creates a routing loop.
+
+---
+
+## Deploying from the command line
+
+Deploy the generated ARM template directly from GitHub:
+
+```bash
+az group create -n rg-nva -l eastus
+
+az deployment group create \
+  -g rg-nva \
+  --template-uri https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/infra/arm/linux-router.json \
+  --parameters \
+      virtualMachineName=nva1 \
+      adminUsername=azureuser \
+      adminPassword='<your-password>' \
+      existingVirtualNetworkName=vnet1 \
+      existingSubnet=nva-subnet \
+      allowSshFromAddressPrefix="$(curl -s ifconfig.me)/32"
+```
+
+> [!WARNING]
+> `scriptUri` defaults to a path resolved **relative to the template's own URL**, so it automatically follows the branch or fork you deploy from. That resolution relies on `deployment().properties.templateLink`, which does **not** exist when you deploy a local file with `--template-file`. In that case pass the script location explicitly:
+>
+> ```bash
+> --parameters scriptUri=https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/scripts/linux/linuxrouter.sh
+> ```
+
+---
+
+## Setup scripts
+
+Custom Script Extension payloads under `scripts/`.
+
+| Script | Purpose |
+|---|---|
+| `linux/linuxrouter.sh` | **Default.** IPv4/IPv6 forwarding, no ICMP redirects, `iptables` SNAT to the internet, persisted with `netfilter-persistent`. |
+| `linux/linuxrouterv2.sh` | Same as above, using `/etc/sysctl.d/` drop-ins instead of editing `/etc/sysctl.conf`. |
+| `linux/linuxrouteronly.sh` | Minimal — enables forwarding only, no NAT and no packages installed. |
+| `linux/linuxrouterbgp.sh` | Router plus **Quagga** BGP, peering with two route server / peer IPs. |
+| `linux/linuxrouterbgpnh.sh` | Quagga BGP with an explicit **next-hop** override for advertised routes. |
+| `linux/linuxrouterbgpfrr.sh` | Router plus **FRRouting** BGP. |
+| `linux/linuxrouterbgpfrr2.sh` | FRRouting variant used for the second NVA in dual-NVA labs. |
+| `linux/linuxrouterbgpfrr2nh.sh` | FRRouting second-NVA variant with a next-hop override. |
+| `linux/cloud-init.txt` | cloud-init alternative to the Custom Script Extension. |
+| `windows/winrouter.ps1` | Enables forwarding on all interfaces and allows inbound ICMP echo. |
+
+> [!NOTE]
+> Every script that installs packages first runs `cloud-init status --wait`. Without it the extension can race cloud-init while it is still switching the VM to the regional Azure apt mirror, which leaves the on-disk package indexes pointing at the superseded mirror and makes installs fail with `Unable to locate package`.
+
+---
+
+## Lab deployment scripts
+
+End-to-end environment builds under `labs/`, intended to be run interactively line by line.
+
+| Script | Builds |
+|---|---|
+| `deploylinuxnva.azcli` | A VNET with a Linux NVA plus spoke/test VMs and UDRs to validate routing through it. |
+| `deploylinuxnvabgp.azcli` | A Linux NVA running BGP, peered with an Azure Route Server. |
+| `deploylinuxnvabgpnp.azcli` | The BGP lab with a custom next-hop, plus network test tooling on the test VMs. |
+| `conf/*-bgproutes.txt` | Pre-generated route lists (999 to 10240 prefixes) for BGP scale testing. |
+
+---
+
+## Working with the templates
+
+Rebuild the ARM JSON after changing any Bicep file:
+
+```bash
+az bicep build --file infra/bicep/linux-router.bicep           --outfile infra/arm/linux-router.json
+az bicep build --file infra/bicep/linux-router-newsubnet.bicep --outfile infra/arm/linux-router-newsubnet.json
+az bicep build --file infra/bicep/windows-router.bicep         --outfile infra/arm/windows-router.json
+```
+
+CI runs `bicep lint`, rebuilds every template and fails if `infra/arm/` differs from the committed output. It also checks the shell scripts for syntax errors and rejects CRLF line endings, which break the shebang when the Custom Script Extension runs a script on Linux.
+
+---
+
+## Recent improvements
+
+The templates and scripts were modernised after several Azure platform retirements broke the original versions.
+
+| Area | What changed |
+|---|---|
+| **Infrastructure as code** | Templates converted to **Bicep**; the ARM JSON is now generated output, kept in sync by CI. |
+| **Operating systems** | Ubuntu 18.04 and the retired `UbuntuLTS` / `ubuntults` CLI aliases replaced with **Ubuntu 24.04 LTS** (default) and 22.04 LTS. Windows moved from Server 2019 to **Server 2025** Core / small disk / Gen 2, with Trusted Launch. |
+| **Public IP** | Basic SKU (retired September 2025) replaced with **Standard SKU, static allocation** across all templates and lab scripts. |
+| **Network security** | Added `allowSshFromAddressPrefix` / `allowRdpFromAddressPrefix` so the templates can create the NSG that Standard SKU public IPs now require, together with an RFC 1918 rule so forwarded traffic still flows. Lab scripts that previously created no NSG now create one. |
+| **Provisioning reliability** | Fixed a latent **cloud-init race** that intermittently failed package installation with `Unable to locate package netfilter-persistent`. All package-installing scripts now wait for cloud-init to finish first. |
+| **Repository layout** | Reorganised into `infra/`, `scripts/`, `labs/` and `docs/`, with consistent file naming. |
+| **Quality gates** | Added GitHub Actions validation and a `.gitattributes` that pins shell scripts to LF. |
+| **Documentation** | Rewrote this README with parameter references, template comparisons, security guidance and coverage of every script in the repository. |
+
+All templates and the affected lab scripts were verified by deploying them to Azure and confirming NSG placement, inbound reachability, extension success, in-guest forwarding and NAT state, end-to-end egress through the NVA, and persistence across a reboot.
+
+---
 
 ## Roadmap
 
-- Add VMSS option for both Linux and Windows deployments
-- Add Accelerated Networking option
+### Add a VMSS option for both Linux and Windows deployments
+
+Replace the single-VM deployment with a **Virtual Machine Scale Set in Flexible orchestration mode** so the router tier can scale out and survive the loss of an instance.
+
+- Place the scale set behind an **internal Standard Load Balancer** with an **HA Ports** rule, so all protocols and ports are distributed, and a health probe that removes unhealthy instances from rotation.
+- Point user-defined routes at the **load balancer's frontend IP** instead of a single VM's private IP, so the next hop stays valid as instances come and go.
+- Spread instances across **availability zones** for zone resilience, and apply the existing setup scripts through the scale set's extension profile so every new instance is configured identically.
+- Design consideration: stateful features such as `iptables` SNAT require **flow symmetry**, so return traffic must reach the same instance that handled the outbound flow. The NAT-to-internet scenario therefore needs per-instance outbound addressing or a NAT Gateway on the subnet rather than per-instance masquerade. Pure forwarding and BGP scenarios do not have this constraint.
+
+### Add an Accelerated Networking option
+
+Expose an `acceleratedNetworking` parameter that sets `enableAcceleratedNetworking` on the NIC. Accelerated Networking gives the VM **SR-IOV**, bypassing the host virtual switch to deliver substantially lower latency and jitter, far higher packets-per-second, and lower CPU utilisation per gigabit — all of which are the main throughput limits for a software NVA.
+
+- Requires a **supported VM size**. The current `Standard_B2s` default is a burstable size and does **not** support Accelerated Networking, so enabling it also means moving to a size such as `Standard_D2s_v5` or larger.
+- Should ship with clear guidance mapping expected throughput to VM size, since the NIC setting alone does not lift the size's own bandwidth cap.
+- Plan to validate the flag against every supported OS image, since enabling it on an unsupported size or image causes the deployment to fail rather than silently degrade.
+
+---
+
+## Contributing
+
+Issues and pull requests are welcome. When changing a template, edit the Bicep under `infra/bicep/`, rebuild the ARM JSON, and commit both — CI will fail if they drift apart.
+
+## License
+
+Released under the [MIT License](LICENSE).

@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.44.1.10279",
-      "templateHash": "8094453408631886471"
+      "version": "0.46.1.21595",
+      "templateHash": "2884941074303245104"
     }
   },
   "parameters": {
@@ -78,7 +78,7 @@
     },
     "scriptUri": {
       "type": "string",
-      "defaultValue": "[uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')]",
+      "defaultValue": "[uri(deployment().properties.templateLink.uri, '../../scripts/linux/linuxrouter.sh')]",
       "metadata": {
         "description": "Script that will be executed"
       }
@@ -103,12 +103,20 @@
       "metadata": {
         "description": "Deploy Public IP Address"
       }
+    },
+    "allowSshFromAddressPrefix": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Source address prefix allowed to reach the VM on TCP 22, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need SSH from the internet. Use Internet to allow any source (not recommended)."
+      }
     }
   },
   "variables": {
     "extensionName": "CustomScript",
     "nicName": "[format('{0}-NIC', parameters('virtualMachineName'))]",
     "publicIPAddressName": "[format('{0}-PublicIP', parameters('virtualMachineName'))]",
+    "sshSecurityRules": "[if(empty(parameters('allowSshFromAddressPrefix')), createArray(), createArray(createObject('name', 'Allow-SSH-Inbound', 'properties', createObject('priority', 200, 'protocol', 'Tcp', 'access', 'Allow', 'direction', 'Inbound', 'sourceAddressPrefix', parameters('allowSshFromAddressPrefix'), 'sourcePortRange', '*', 'destinationAddressPrefix', '*', 'destinationPortRange', '22'))))]",
     "osVersionDefinitions": {
       "22.04": {
         "publisher": "Canonical",
@@ -131,25 +139,7 @@
       "name": "default-nsg",
       "location": "[parameters('location')]",
       "properties": {
-        "securityRules": [
-          {
-            "name": "Allow-Traffic-RFC-1918",
-            "properties": {
-              "priority": 300,
-              "protocol": "*",
-              "access": "Allow",
-              "direction": "Inbound",
-              "sourceAddressPrefixes": [
-                "10.0.0.0/8",
-                "172.16.0.0/12",
-                "192.168.0.0/16"
-              ],
-              "sourcePortRange": "*",
-              "destinationAddressPrefix": "*",
-              "destinationPortRange": "*"
-            }
-          }
-        ]
+        "securityRules": "[concat(variables('sshSecurityRules'), createArray(createObject('name', 'Allow-Traffic-RFC-1918', 'properties', createObject('priority', 300, 'protocol', '*', 'access', 'Allow', 'direction', 'Inbound', 'sourceAddressPrefixes', createArray('10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'), 'sourcePortRange', '*', 'destinationAddressPrefix', '*', 'destinationPortRange', '*'))))]"
       }
     },
     {

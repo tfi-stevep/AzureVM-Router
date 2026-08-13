@@ -14,6 +14,12 @@ sed -i "/net.ipv6.conf.all.accept_redirects = 0/ s/# *//" /etc/sysctl.conf
 # The script runs as root (Custom Script Extension), so no sudo is needed.
 export DEBIAN_FRONTEND=noninteractive
 
+# The Custom Script Extension can start before cloud-init has finished setting
+# up the apt sources. Installing then fails with "Unable to locate package"
+# because the package indexes on disk belong to the superseded mirror.
+echo "Waiting for cloud-init to complete"
+cloud-init status --wait >/dev/null 2>&1 || true
+
 echo "Updating repositories"
 apt-get update -y --fix-missing
 

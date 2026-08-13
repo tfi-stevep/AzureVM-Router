@@ -3,9 +3,8 @@
 asn_frr=$1
 bgp_routerId=$2
 bgp_network1=$3
-bgp_network2=$4
-routeserver_IP1=$5
-routeserver_IP2=$6
+routeserver_IP1=$4
+routeserver_IP2=$5
 
 # Enable IPv4 and IPv6 forwarding
 sysctl -w net.ipv4.ip_forward=1
@@ -18,6 +17,10 @@ echo "Installing frr"
 curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
 FRRVER="frr-stable"
 echo deb https://deb.frrouting.org/frr $(lsb_release -s -c) $FRRVER | sudo tee -a /etc/apt/sources.list.d/frr.list
+
+# Wait for cloud-init to finish so apt does not run against superseded
+# package indexes, which fails with "Unable to locate package".
+cloud-init status --wait >/dev/null 2>&1 || true
 
 apt-get -y update
 

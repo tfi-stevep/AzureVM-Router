@@ -26,11 +26,14 @@ param adminPassword string
 @description('Existing Virtual Network Name')
 param existingVirtualNetworkName string
 
-@description('Type Existing Subnet Name')
-param existingSubnet string
+@description('Name of the Subnet where NVA will reside')
+param subnetName string = 'lxnva-subnet'
+
+@description('Specify Subnet Prefix. It can be small as /29')
+param subnetPrefix string
 
 @description('Script that will be executed')
-param scriptUri string = uri(deployment().properties.templateLink.uri, 'linuxrouter.sh')
+param scriptUri string = uri(deployment().properties.templateLink.uri, '../../scripts/linux/linuxrouter.sh')
 
 @description('Command to run the script')
 param scriptCmd string = 'sh linuxrouter.sh'
@@ -41,10 +44,28 @@ param location string = resourceGroup().location
 @description('Deploy Public IP Address')
 param deployPublicIpAddress bool = true
 
+@description('Source address prefix allowed to reach the VM on TCP 22, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need SSH from the internet. Use Internet to allow any source (not recommended).')
+param allowSshFromAddressPrefix string = ''
+
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-NIC'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
-var subnetResourceId = resourceId('Microsoft.Network/virtualNetworks/subnets', existingVirtualNetworkName, existingSubnet)
+
+var sshSecurityRules = empty(allowSshFromAddressPrefix) ? [] : [
+  {
+    name: 'Allow-SSH-Inbound'
+    properties: {
+      priority: 200
+      protocol: 'Tcp'
+      access: 'Allow'
+      direction: 'Inbound'
+      sourceAddressPrefix: allowSshFromAddressPrefix
+      sourcePortRange: '*'
+      destinationAddressPrefix: '*'
+      destinationPortRange: '22'
+    }
+  }
+]
 
 var osVersionDefinitions = {
   '22.04': {
@@ -58,6 +79,47 @@ var osVersionDefinitions = {
     offer: 'ubuntu-24_04-lts'
     sku: 'server'
     version: 'latest'
+  }
+}
+
+resource default_nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
+  name: 'default-nsg'
+  location: location
+  properties: {
+    securityRules: concat(sshSecurityRules, [
+      {
+        name: 'Allow-Traffic-RFC-1918'
+        properties: {
+          priority: 300
+          protocol: '*'
+          access: 'Allow'
+          direction: 'Inbound'
+          sourceAddressPrefixes: [
+            '10.0.0.0/8'
+            '172.16.0.0/12'
+            '192.168.0.0/16'
+          ]
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+    ])
+  }
+}
+
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' existing = {
+  name: existingVirtualNetworkName
+}
+
+resource subnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' = {
+  name: subnetName
+  parent: virtualNetwork
+  properties: {
+    addressPrefix: subnetPrefix
+    networkSecurityGroup: {
+      id: default_nsg.id
+    }
   }
 }
 
@@ -107,7 +169,7 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
         name: 'ipconfig1'
         properties: {
           subnet: {
-            id: subnetResourceId
+            id: subnet.id
           }
           privateIPAllocationMethod: 'Dynamic'
           publicIPAddress: deployPublicIpAddress ? {
@@ -130,9 +192,9 @@ resource publicIpAddress 'Microsoft.Network/publicIPAddresses@2024-05-01' = if (
   }
 }
 
-resource virtualMachineName_extension 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
-  parent: virtualMachine
+resource virtualMachineExtension 'Microsoft.Compute/virtualMachines/extensions@2024-07-01' = {
   name: extensionName
+  parent: virtualMachine
   location: location
   properties: {
     publisher: 'Microsoft.Azure.Extensions'

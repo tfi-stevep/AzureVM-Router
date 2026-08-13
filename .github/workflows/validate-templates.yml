@@ -1,0 +1,63 @@
+name: Validate templates
+
+on:
+  push:
+    branches: [master]
+    paths: ['infra/**', 'scripts/**', '.github/workflows/validate-templates.yml']
+  pull_request:
+    paths: ['infra/**', 'scripts/**', '.github/workflows/validate-templates.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bicep:
+    name: Build, lint and check ARM output is in sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Bicep CLI
+        run: |
+          curl -sLo bicep https://github.com/Azure/bicep/releases/latest/download/bicep-linux-x64
+          chmod +x bicep && sudo mv bicep /usr/local/bin/bicep
+          bicep --version
+
+      - name: Lint Bicep sources
+        run: |
+          for src in infra/bicep/*.bicep; do
+            echo "Linting $src"
+            bicep lint "$src"
+          done
+
+      # The ARM JSON under infra/arm/ is generated, never hand-edited. Rebuild it
+      # and fail if the result differs from what is committed.
+      - name: Rebuild ARM templates and verify they match the committed output
+        run: |
+          for src in infra/bicep/*.bicep; do
+            out="infra/arm/$(basename "${src%.bicep}").json"
+            bicep build "$src" --outfile "$out"
+          done
+          if ! git diff --exit-code -- infra/arm; then
+            echo "::error::infra/arm/*.json is out of sync with infra/bicep/*.bicep. Run 'az bicep build' and commit the result."
+            exit 1
+          fi
+
+  shell:
+    name: Shell script syntax and line endings
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # CRLF in a script executed by the Custom Script Extension breaks the
+      # shebang with "bad interpreter: No such file or directory".
+      - name: Reject CRLF line endings
+        run: |
+          if grep -rlU $'\r' scripts/linux labs; then
+            echo "::error::Files above contain CRLF line endings; they must be LF."
+            exit 1
+          fi
+
+      - name: Check syntax
+        run: for f in scripts/linux/*.sh; do bash -n "$f"; done
