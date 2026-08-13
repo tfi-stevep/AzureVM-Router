@@ -44,9 +44,28 @@ param location string = resourceGroup().location
 @description('Deploy Public IP Address')
 param deployPublicIpAddress bool = true
 
+@description('Source address prefix allowed to reach the VM on TCP 22, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need SSH from the internet. Use Internet to allow any source (not recommended).')
+param allowSshFromAddressPrefix string = ''
+
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-NIC'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
+
+var sshSecurityRules = empty(allowSshFromAddressPrefix) ? [] : [
+  {
+    name: 'Allow-SSH-Inbound'
+    properties: {
+      priority: 200
+      protocol: 'Tcp'
+      access: 'Allow'
+      direction: 'Inbound'
+      sourceAddressPrefix: allowSshFromAddressPrefix
+      sourcePortRange: '*'
+      destinationAddressPrefix: '*'
+      destinationPortRange: '22'
+    }
+  }
+]
 
 var osVersionDefinitions = {
   '22.04': {
@@ -67,7 +86,7 @@ resource default_nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
   name: 'default-nsg'
   location: location
   properties: {
-    securityRules: [
+    securityRules: concat(sshSecurityRules, [
       {
         name: 'Allow-Traffic-RFC-1918'
         properties: {
@@ -85,7 +104,7 @@ resource default_nsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
           destinationPortRange: '*'
         }
       }
-    ]
+    ])
   }
 }
 

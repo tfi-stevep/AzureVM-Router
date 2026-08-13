@@ -41,10 +41,15 @@ param location string = resourceGroup().location
 @description('Deploy Public IP Address')
 param deployPublicIpAddress bool = true
 
+@description('Source address prefix allowed to reach the VM on TCP 22, for example 203.0.113.4/32. Standard SKU public IPs deny inbound traffic by default, so leave this empty only if you do not need SSH from the internet. Use Internet to allow any source (not recommended).')
+param allowSshFromAddressPrefix string = ''
+
 var extensionName = 'CustomScript'
 var nicName = '${virtualMachineName}-NIC'
+var nsgName = '${virtualMachineName}-NSG'
 var publicIPAddressName = '${virtualMachineName}-PublicIP'
 var subnetResourceId = resourceId('Microsoft.Network/virtualNetworks/subnets', existingVirtualNetworkName, existingSubnet)
+var deployNetworkSecurityGroup = !empty(allowSshFromAddressPrefix)
 
 var osVersionDefinitions = {
   '22.04': {
@@ -97,11 +102,53 @@ resource virtualMachine 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   }
 }
 
+resource networkSecurityGroup 'Microsoft.Network/networkSecurityGroups@2024-05-01' = if (deployNetworkSecurityGroup) {
+  name: nsgName
+  location: location
+  properties: {
+    securityRules: [
+      {
+        name: 'Allow-SSH-Inbound'
+        properties: {
+          priority: 200
+          protocol: 'Tcp'
+          access: 'Allow'
+          direction: 'Inbound'
+          sourceAddressPrefix: allowSshFromAddressPrefix
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '22'
+        }
+      }
+      {
+        name: 'Allow-Traffic-RFC-1918'
+        properties: {
+          priority: 300
+          protocol: '*'
+          access: 'Allow'
+          direction: 'Inbound'
+          sourceAddressPrefixes: [
+            '10.0.0.0/8'
+            '172.16.0.0/12'
+            '192.168.0.0/16'
+          ]
+          sourcePortRange: '*'
+          destinationAddressPrefix: '*'
+          destinationPortRange: '*'
+        }
+      }
+    ]
+  }
+}
+
 resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   name: nicName
   location: location
   properties: {
     enableIPForwarding: true
+    networkSecurityGroup: deployNetworkSecurityGroup ? {
+      id: networkSecurityGroup.id
+    } : null
     ipConfigurations: [
       {
         name: 'ipconfig1'
