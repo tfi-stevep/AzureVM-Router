@@ -69,4 +69,3 @@ echo "[*] Saved IPv4 rules to /etc/iptables/rules.v4"
 systemctl restart netfilter-persistent || true
 
 echo "[✓] Done. Reboot not required."
-``
