@@ -21,7 +21,7 @@ az network vnet create --resource-group $rg --name $vnetname --location $locatio
 az network vnet subnet create --address-prefix "10.1.10.0/24" --name $nvasubnetname --resource-group $rg --vnet-name $vnetname --output none
 
 # Create Subnet1 VM:
-az vm create -n $vnetname-vm1 -g $rg --image ubuntults --public-ip-sku Standard --size $vmsize -l $location --subnet subnet1 --vnet-name $vnetname --admin-username $username --admin-password $password --nsg "" --no-wait
+az vm create -n $vnetname-vm1 -g $rg --image Ubuntu2404 --public-ip-sku Standard --size $vmsize -l $location --subnet subnet1 --vnet-name $vnetname --admin-username $username --admin-password $password --nsg "" --no-wait
 
 # NSG:
 az network nsg create --resource-group $rg --name default-nsg-$location --location $location -o none
@@ -68,7 +68,7 @@ nvanames=$(i=1;while [ $i -le $instances ];do echo $vnetname-$nvaname$i; ((i++))
 for nvaname in $nvanames
 do
  # Enable routing, NAT and BGP on Linux NVA:
- az vm create -n $nvaname  -g $rg --image ubuntults --public-ip-sku Standard --size $vmsize -l $location --subnet $nvasubnetname --vnet-name $vnetname --admin-username $username --admin-password $password --nsg "" --output none
+ az vm create -n $nvaname  -g $rg --image Ubuntu2404 --public-ip-sku Standard --size $vmsize -l $location --subnet $nvasubnetname --vnet-name $vnetname --admin-username $username --admin-password $password --nsg "" --output none
  
  #NVA BGP config variables (do not change)
  bgp_routerId=$(az network nic show --name "$nvaname"VMNic --resource-group $rg --query ipConfigurations[0].privateIpAddress -o tsv)
@@ -111,7 +111,7 @@ az vm boot-diagnostics enable --storage $stguri --ids $(az vm list -g $rg --quer
 
 echo Installing tools for networking connectivity validation such as traceroute, tcptraceroute, iperf and others  
 nettoolsuri="https://raw.githubusercontent.com/dmauser/azure-vm-net-tools/main/script/nettools.sh"
-for vm in `az vm list -g $rg --query "[?storageProfile.imageReference.offer=='UbuntuServer'].name" -o tsv`
+for vm in `az vm list -g $rg --query "[?contains(storageProfile.imageReference.offer, 'ubuntu') || contains(storageProfile.imageReference.offer, 'Ubuntu')].name" -o tsv`
 do
  az vm extension set \
  --resource-group $rg \
