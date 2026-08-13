@@ -28,6 +28,10 @@ sysctl --system >/dev/null
 
 # --- Packages (non-interactive) ---
 export DEBIAN_FRONTEND=noninteractive
+# Wait for cloud-init to finish so apt does not run against superseded
+# package indexes, which fails with "Unable to locate package".
+cloud-init status --wait >/dev/null 2>&1 || true
+
 apt-get update -y --fix-missing
 # Preseed iptables-persistent to disable autosave prompts
 echo "iptables-persistent iptables-persistent/autosave_v4 boolean false" | debconf-set-selections

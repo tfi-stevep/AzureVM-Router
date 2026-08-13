@@ -20,6 +20,10 @@ curl -s https://deb.frrouting.org/frr/keys.asc | sudo apt-key add -
 FRRVER="frr-stable"
 echo deb https://deb.frrouting.org/frr $(lsb_release -s -c) $FRRVER | sudo tee -a /etc/apt/sources.list.d/frr.list
 
+# Wait for cloud-init to finish so apt does not run against superseded
+# package indexes, which fails with "Unable to locate package".
+cloud-init status --wait >/dev/null 2>&1 || true
+
 apt-get -y update
 
 apt-get -y install frr frr-pythontools
