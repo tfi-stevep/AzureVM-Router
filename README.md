@@ -62,8 +62,8 @@ Pick a template and deploy straight to the portal. Each one can join an existing
 
 | Template | Use when | Deploy | Visualize |
 |---|---|---|---|
-| **Linux router** | You want an Ubuntu router with forwarding and SNAT | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Flinux-router.json) |
-| **Windows router** | You want a Windows Server router | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/master/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fmaster%2Finfra%2Farm%2Fwindows-router.json) |
+| **Linux router** | You want an Ubuntu router with forwarding and SNAT | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/valid-computer-name/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fvalid-computer-name%2Finfra%2Farm%2Flinux-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/valid-computer-name/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fvalid-computer-name%2Finfra%2Farm%2Flinux-router.json) |
+| **Windows router** | You want a Windows Server router | [![Deploy To Azure](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/valid-computer-name/1-CONTRIBUTION-GUIDE/images/deploytoazure.svg?sanitize=true)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fvalid-computer-name%2Finfra%2Farm%2Fwindows-router.json) | [![Visualize](https://raw.githubusercontent.com/Azure/azure-quickstart-templates/valid-computer-name/1-CONTRIBUTION-GUIDE/images/visualizebutton.svg?sanitize=true)](http://armviz.io/#/?load=https%3A%2F%2Fraw.githubusercontent.com%2Fdmauser%2FAzureVM-Router%2Fvalid-computer-name%2Finfra%2Farm%2Fwindows-router.json) |
 
 > [!IMPORTANT]
 > Set **`allowSshFromAddressPrefix`** (Linux) or **`allowRdpFromAddressPrefix`** (Windows) to your own public IP, e.g. `203.0.113.4/32`. Standard SKU public IPs block **all** inbound traffic unless an NSG allows it. See [Network security defaults](#network-security-defaults).
@@ -216,7 +216,7 @@ az group create -n rg-nva -l eastus
 
 az deployment group create \
   -g rg-nva \
-  --template-uri https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/infra/arm/linux-router.json \
+  --template-uri https://raw.githubusercontent.com/dmauser/AzureVM-Router/valid-computer-name/infra/arm/linux-router.json \
   --parameters \
       virtualMachineName=nva1 \
       adminUsername=azureuser \
@@ -232,7 +232,7 @@ Building the VNET and subnet from scratch:
 ```bash
 az deployment group create \
   -g rg-nva \
-  --template-uri https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/infra/arm/linux-router.json \
+  --template-uri https://raw.githubusercontent.com/dmauser/AzureVM-Router/valid-computer-name/infra/arm/linux-router.json \
   --parameters \
       virtualMachineName=nva1 \
       adminUsername=azureuser \
@@ -251,7 +251,7 @@ Use `networkMode=NewSubnet` to add the subnet to a VNET that already exists.
 > `scriptUri` defaults to a path resolved **relative to the template's own URL**, so it automatically follows the branch or fork you deploy from. That resolution relies on `deployment().properties.templateLink`, which is not populated when you deploy a local file with `--template-file` or from a template spec. In those cases the default falls back to the `master` branch on GitHub. Pass the script location explicitly to pin it elsewhere:
 >
 > ```bash
-> --parameters scriptUri=https://raw.githubusercontent.com/dmauser/AzureVM-Router/master/scripts/linux/linuxrouter.sh
+> --parameters scriptUri=https://raw.githubusercontent.com/dmauser/AzureVM-Router/valid-computer-name/scripts/linux/linuxrouter.sh
 > ```
 
 ---
