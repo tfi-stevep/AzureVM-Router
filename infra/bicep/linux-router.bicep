@@ -210,12 +210,29 @@ resource nic 'Microsoft.Network/networkInterfaces@2024-05-01' = {
   ]
 }
 
+resource computerNameScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
+  name: 'computerNameScript'
+  location: resourceGroup().location
+  kind: 'AzurePowerShell'
+  properties: {
+    azPowerShellVersion: '11.0'
+    // PowerShell uses the regex-powered -replace operator
+    scriptContent: '''
+      param([string]$inputStr)
+      $replaced = $inputStr -replace '^(?![0-9]+$)(?!-)[a-zA-Z0-9_-]{1,15}(?<!-)$', ''
+      $DeploymentScriptOutputs = @{ result = $replaced }
+    '''
+    arguments: '-inputStr "${virtualMachineName}"'
+    retentionInterval: 'P1D'
+  }
+}
+
 resource virtualMachine 'Microsoft.Compute/virtualMachines@2024-07-01' = {
   name: virtualMachineName
   location: location
   properties: {
     osProfile: {
-      computerName: virtualMachineName
+      computerName: computerNameScript.properties.outputs.result
       adminUsername: adminUsername
       adminPassword: adminPassword
     }

@@ -4,8 +4,8 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.46.1.21595",
-      "templateHash": "11051965274704034192"
+      "version": "0.47.16.16243",
+      "templateHash": "4057705993902122359"
     }
   },
   "parameters": {
@@ -254,13 +254,26 @@
       ]
     },
     {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "computerNameScript",
+      "location": "[resourceGroup().location]",
+      "kind": "AzurePowerShell",
+      "properties": {
+        "azPowerShellVersion": "11.0",
+        "scriptContent": "      param([string]$inputStr)\n      $replaced = $inputStr -replace '^(?![0-9]+$)(?!-)[a-zA-Z0-9_-]{1,15}(?<!-)$', ''\n      $DeploymentScriptOutputs = @{ result = $replaced }\n    ",
+        "arguments": "[format('-inputStr \"{0}\"', parameters('virtualMachineName'))]",
+        "retentionInterval": "P1D"
+      }
+    },
+    {
       "type": "Microsoft.Compute/virtualMachines",
       "apiVersion": "2024-07-01",
       "name": "[parameters('virtualMachineName')]",
       "location": "[parameters('location')]",
       "properties": {
         "osProfile": {
-          "computerName": "[parameters('virtualMachineName')]",
+          "computerName": "[reference(resourceId('Microsoft.Resources/deploymentScripts', 'computerNameScript'), '2023-08-01').outputs.result]",
           "adminUsername": "[parameters('adminUsername')]",
           "adminPassword": "[parameters('adminPassword')]"
         },
@@ -290,6 +303,7 @@
         }
       },
       "dependsOn": [
+        "[resourceId('Microsoft.Resources/deploymentScripts', 'computerNameScript')]",
         "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
       ]
     },
