@@ -5,7 +5,7 @@
     "_generator": {
       "name": "bicep",
       "version": "0.47.16.16243",
-      "templateHash": "4057705993902122359"
+      "templateHash": "3663530173108337542"
     }
   },
   "parameters": {
@@ -261,7 +261,7 @@
       "kind": "AzurePowerShell",
       "properties": {
         "azPowerShellVersion": "11.0",
-        "scriptContent": "      param([string]$inputStr)\n      $replaced = $inputStr -replace '^(?![0-9]+$)(?!-)[a-zA-Z0-9_-]{1,15}(?<!-)$', ''\n      $DeploymentScriptOutputs = @{ result = $replaced }\n    ",
+        "scriptContent": "      param([string]$inputStr)\n      $replaced = $inputStr -replace \"[^a-zA-Z0-9-]\", \"-\" -replace '.{1,15}$', ''\n      $DeploymentScriptOutputs = @{ result = $replaced }\n    ",
         "arguments": "[format('-inputStr \"{0}\"', parameters('virtualMachineName'))]",
         "retentionInterval": "P1D"
       }

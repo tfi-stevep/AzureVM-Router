@@ -225,7 +225,7 @@ resource computerNameScript 'Microsoft.Resources/deploymentScripts@2023-08-01' =
     // PowerShell uses the regex-powered -replace operator
     scriptContent: '''
       param([string]$inputStr)
-      $replaced = $inputStr -replace '^(?![0-9]+$)(?!-)[a-zA-Z0-9_-]{1,15}(?<!-)$', ''
+      $replaced = $inputStr -replace "[^a-zA-Z0-9-]", "-" -replace '.{1,15}$', ''
       $DeploymentScriptOutputs = @{ result = $replaced }
     '''
     arguments: '-inputStr "${virtualMachineName}"'
